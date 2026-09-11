@@ -23,14 +23,76 @@ Person-ReID-BenchMark/
 │
 ├── reid/
 │   ├── __init__.py
+│   ├── sampling.py
+│   ├── aggregate.py
+│   ├── metrics.py
+│   ├── models/
+│   │   └── fastreid.py
 │   └── data/
 │       ├── __init__.py
 │       ├── tracklet.py
 │       └── mars.py
 │
 └── scripts/
-    └── test_tracklet.py
+    ├── test_tracklet.py
+    ├── inspect_mars.py
+    └── eval_fastreid_mars.py
 ```
+---
+
+# FastReID baseline
+
+Two eval-only benchmarks share the same pretrained **SBS ResNet-50** checkpoint trained on Market1501 (no extra training):
+
+1. Official FastReID image ReID on Market1501 (sanity check vs the model zoo).
+2. SHAWAF tracklet ReID on MARS (sample frames, extract features, mean-pool, Rank-1 / mAP).
+
+Use a **Python 3.11 CUDA** environment. FastReID does not import on the base Python 3.13 install. On this machine the working env is `crowd-gpu` (PyTorch 2.11 + CUDA 12.8). Install extras with:
+
+```bash
+conda activate crowd-gpu
+python -m pip install -e ".[fastreid]"
+```
+
+Weights (gitignored): `weights/market_sbs_R50.pth`  
+https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/market_sbs_R50.pth
+
+Zoo target on Market1501: **Rank-1 95.4% / mAP 88.2%**. Reproduced here: **Rank-1 95.28% / mAP 88.48% / mINP 65.54** (`results/fastreid_market1501.json`).
+
+## Official Market1501 eval
+
+Put Market1501 under `datasets/Market-1501-v15.09.15/` (`bounding_box_train/`, `bounding_box_test/`, `query/`). From `fast-reid/`:
+
+```bash
+conda activate crowd-gpu
+$env:FASTREID_DATASETS = "$PWD\..\datasets"
+
+python tools/train_net.py --config-file ./configs/Market1501/sbs_R50.yml --eval-only `
+  MODEL.WEIGHTS "$PWD\..\weights\market_sbs_R50.pth" `
+  MODEL.DEVICE "cuda:0" `
+  MODEL.BACKBONE.PRETRAIN False `
+  DATALOADER.NUM_WORKERS 0 `
+  TEST.IMS_PER_BATCH 32
+```
+
+On Windows, `DATALOADER.NUM_WORKERS 0` avoids DataLoader hangs. Cython rank eval is skipped if `make` is missing; Python CMC/mAP is used instead.
+
+## MARS tracklet eval
+
+MARS `info/` is already the standard split metadata. Place `bbox_train/` and `bbox_test/` under `datasets/MARS/` (see below). Then:
+
+```bash
+conda activate crowd-gpu
+python scripts/eval_fastreid_mars.py `
+  --mars-root datasets/MARS `
+  --config-file fast-reid/configs/Market1501/sbs_R50.yml `
+  --weights weights/market_sbs_R50.pth `
+  --num-frames 8 `
+  --batch-size 32 `
+  --device cuda
+```
+
+Eval only needs `bbox_test/` plus `info/` (`bbox_train/` can stay empty). Results: **Rank-1 87.72% / mAP 84.04% / mINP 64.51** on 1840/1980 valid queries (`results/fastreid_mars.json`). MARS and Market1501 share the same capture site, so this is an in-scene tracklet baseline rather than a harsh domain shift.
 
 ---
 
@@ -128,17 +190,13 @@ git sparse-checkout set info
 git checkout master
 ```
 
-Then copy:
+If Google Drive / SharePoint is blocked, the same bbox trees are on Kaggle (`lyqassf/marslyq`). With a Python 3.11 env:
 
-```text
-MARS-evaluation/info/
+```bash
+python -c "import kagglehub; print(kagglehub.dataset_download('lyqassf/marslyq'))"
 ```
 
-to:
-
-```text
-datasets/MARS/info/
-```
+Copy the resulting `bbox_train/` and `bbox_test/` into `datasets/MARS/` next to `info/`.
 
 ---
 

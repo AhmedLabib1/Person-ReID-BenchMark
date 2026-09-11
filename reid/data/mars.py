@@ -73,9 +73,13 @@ class MarsDataset:
 
         self._validate_dataset_structure()
 
-    def load(self) -> MarsSplits:
+    def load(self, include_train: bool = True) -> MarsSplits:
         """
         Load the standard MARS train/query/gallery splits.
+
+        include_train:
+            When False, skip building train tracklets. Useful for
+            evaluation-only runs that only need bbox_test.
         """
 
         train_names = self._read_names(
@@ -118,12 +122,14 @@ class MarsDataset:
             query_indices.astype(np.int64) - 1
         )
 
-        train_tracklets = self._build_tracklets(
-            names=train_names,
-            metadata=train_metadata,
-            images_dir=self.bbox_train_dir,
-            split_name="TRAIN",
-        )
+        train_tracklets: list[Tracklet] = []
+        if include_train:
+            train_tracklets = self._build_tracklets(
+                names=train_names,
+                metadata=train_metadata,
+                images_dir=self.bbox_train_dir,
+                split_name="TRAIN",
+            )
 
         query_metadata = test_metadata[
             query_indices

@@ -69,6 +69,7 @@ datasets/
 MARS/
 bbox_train/
 bbox_test/
+fast-reid/
 
 
 # =========================================================
