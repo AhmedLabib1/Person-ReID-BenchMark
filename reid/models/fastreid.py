@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import cv2
 import numpy as np
 import torch
 from tqdm import tqdm
+
+from reid.profiling import ExtractStats, synchronize as sync_device
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -54,6 +57,7 @@ class FastReIDEncoder:
         self.model.eval()
         self._load_weights(Path(cfg.MODEL.WEIGHTS))
         self.model.to(self.device)
+        self.last_extract_stats = ExtractStats()
 
     def _load_weights(self, weights: Path) -> None:
         checkpoint = torch.load(
@@ -127,14 +131,18 @@ class FastReIDEncoder:
         crop_paths: list[Path],
         batch_size: int = 32,
         show_progress: bool = False,
+        warmup_batches: int = 2,
     ) -> np.ndarray:
         """
         Return embeddings of shape (num_valid_crops, dim).
 
-        Crops that cannot be read are skipped. The caller should keep
-        path/embedding alignment themselves if they need it; this method
-        only returns features for successfully loaded images.
+        Timing for this call is stored on ``self.last_extract_stats``.
+        The first ``warmup_batches`` forwards are included in wall / GPU
+        totals but excluded from the steady-state rate.
         """
+
+        stats = ExtractStats(warmup_batches=max(warmup_batches, 0))
+        self.last_extract_stats = stats
 
         if not crop_paths:
             return np.zeros((0, 0), dtype=np.float32)
@@ -145,19 +153,40 @@ class FastReIDEncoder:
         if show_progress:
             iterator = tqdm(crop_paths, desc="FastReID extract", unit="img")
 
+        sync_device(self.device)
+        wall_start = time.perf_counter()
+
+        def flush() -> None:
+            nonlocal batch
+            if not batch:
+                return
+            count_steady = stats.num_batches >= stats.warmup_batches
+            images_in_batch = len(batch)
+            chunk, forward_s = self._forward_batch(batch, return_time=True)
+            stats.num_batches += 1
+            stats.num_images += images_in_batch
+            stats.gpu_forward_s += forward_s
+            stats.batch_forward_s.append(forward_s)
+            if count_steady:
+                stats.timed_images += images_in_batch
+            features.append(chunk)
+            batch = []
+
         for path in iterator:
+            load_start = time.perf_counter()
             image = self._load_image(Path(path))
+            stats.preprocess_s += time.perf_counter() - load_start
             if image is None:
                 raise FileNotFoundError(
                     f"Could not read person crop: {path}"
                 )
             batch.append(image)
             if len(batch) >= batch_size:
-                features.append(self._forward_batch(batch))
-                batch = []
+                flush()
 
-        if batch:
-            features.append(self._forward_batch(batch))
+        flush()
+        sync_device(self.device)
+        stats.wall_s = time.perf_counter() - wall_start
 
         if not features:
             return np.zeros((0, 0), dtype=np.float32)
@@ -203,7 +232,25 @@ class FastReIDEncoder:
         return valid_paths, embeddings
 
     @torch.no_grad()
-    def _forward_batch(self, images: list[torch.Tensor]) -> np.ndarray:
+    def _forward_batch(
+        self,
+        images: list[torch.Tensor],
+        return_time: bool = False,
+    ) -> np.ndarray | tuple[np.ndarray, float]:
         batch = torch.stack(images, dim=0).to(self.device, non_blocking=True)
-        outputs = self.model({"images": batch})
-        return outputs.detach().cpu().numpy()
+        if self.device.type == "cuda":
+            start = torch.cuda.Event(enable_timing=True)
+            end = torch.cuda.Event(enable_timing=True)
+            start.record()
+            outputs = self.model({"images": batch})
+            end.record()
+            end.synchronize()
+            forward_s = start.elapsed_time(end) / 1000.0
+        else:
+            cpu_start = time.perf_counter()
+            outputs = self.model({"images": batch})
+            forward_s = time.perf_counter() - cpu_start
+        features = outputs.detach().cpu().numpy()
+        if return_time:
+            return features, forward_s
+        return features

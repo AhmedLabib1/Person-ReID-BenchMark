@@ -26,6 +26,7 @@ Person-ReID-BenchMark/
 │   ├── sampling.py
 │   ├── aggregate.py
 │   ├── metrics.py
+│   ├── profiling.py
 │   ├── models/
 │   │   └── fastreid.py
 │   └── data/
@@ -89,10 +90,20 @@ python scripts/eval_fastreid_mars.py `
   --weights weights/market_sbs_R50.pth `
   --num-frames 8 `
   --batch-size 32 `
+  --warmup-batches 2 `
   --device cuda
 ```
 
-Eval only needs `bbox_test/` plus `info/` (`bbox_train/` can stay empty). Results: **Rank-1 87.72% / mAP 84.04% / mINP 64.51** on 1840/1980 valid queries (`results/fastreid_mars.json`). MARS and Market1501 share the same capture site, so this is an in-scene tracklet baseline rather than a harsh domain shift.
+The JSON now includes accuracy **and** efficiency:
+
+- **GPU allocated** after the model is loaded (resident weights)
+- **GPU peak** allocated / reserved during extract (weights + activations)
+- **Wall time** for decode + resize + copy + forward
+- **GPU forward** time from CUDA events around the model (excludes disk I/O)
+- **GPU steady** rate after `--warmup-batches` (skips CUDA compile / cache warmup)
+- **ms / image** and **ms / tracklet**
+
+Eval only needs `bbox_test/` plus `info/` (`bbox_train/` can stay empty). Accuracy: **Rank-1 87.72% / mAP 84.04% / mINP 64.51** on 1840/1980 valid queries. Efficiency on an RTX 5070 Laptop (batch 32, 8 frames): **90 MiB allocated / 428 MiB peak**, **2.56 ms/image GPU** (~390 img/s), **37.7 ms/tracklet wall**. Full dump: `results/fastreid_mars.json`. MARS and Market1501 share the same capture site, so this is an in-scene tracklet baseline rather than a harsh domain shift.
 
 ---
 

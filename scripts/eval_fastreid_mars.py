@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
@@ -22,6 +23,13 @@ from reid.metrics import (
     format_metrics,
 )
 from reid.models.fastreid import FastReIDEncoder
+from reid.profiling import (
+    format_efficiency,
+    gpu_memory_snapshot,
+    merge_extract_stats,
+    model_footprint,
+    reset_peak_gpu_memory,
+)
 from reid.sampling import sample_crop_paths
 
 
@@ -46,6 +54,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--num-frames", type=int, default=8)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--warmup-batches", type=int, default=2)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument(
         "--output",
@@ -61,6 +70,7 @@ def embed_tracklets(
     num_frames: int,
     batch_size: int,
     split_name: str,
+    warmup_batches: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     embeddings: list[np.ndarray] = []
     pids: list[int] = []
@@ -81,6 +91,7 @@ def embed_tracklets(
         crop_paths,
         batch_size=batch_size,
         show_progress=True,
+        warmup_batches=warmup_batches,
     )
     if features.shape[0] != len(crop_paths):
         raise RuntimeError(
@@ -147,6 +158,8 @@ def main() -> None:
         weights=args.weights,
         device=args.device,
     )
+    after_load = gpu_memory_snapshot(encoder.device)
+    reset_peak_gpu_memory(encoder.device)
 
     query_feat, query_pids, query_camids = embed_tracklets(
         tracklets=splits.query,
@@ -154,15 +167,52 @@ def main() -> None:
         num_frames=args.num_frames,
         batch_size=args.batch_size,
         split_name="query",
+        warmup_batches=args.warmup_batches,
     )
+    query_stats = encoder.last_extract_stats
     gallery_feat, gallery_pids, gallery_camids = embed_tracklets(
         tracklets=splits.gallery,
         encoder=encoder,
         num_frames=args.num_frames,
         batch_size=args.batch_size,
         split_name="gallery",
+        warmup_batches=args.warmup_batches,
     )
+    gallery_stats = encoder.last_extract_stats
+    peak = gpu_memory_snapshot(encoder.device)
 
+    infer_stats = merge_extract_stats([query_stats, gallery_stats])
+    efficiency = {
+        "batch_size": args.batch_size,
+        "num_frames": args.num_frames,
+        "warmup_batches": args.warmup_batches,
+        "model": model_footprint(encoder.model),
+        "gpu_memory": {
+            "device": after_load.get("device", str(encoder.device)),
+            "total_mb": after_load.get("total_mb", 0.0),
+            "after_load": {
+                "allocated_mb": after_load.get("allocated_mb", 0.0),
+                "reserved_mb": after_load.get("reserved_mb", 0.0),
+            },
+            "peak": {
+                "peak_allocated_mb": peak.get("peak_allocated_mb", 0.0),
+                "peak_reserved_mb": peak.get("peak_reserved_mb", 0.0),
+                "allocated_mb": peak.get("allocated_mb", 0.0),
+                "reserved_mb": peak.get("reserved_mb", 0.0),
+            },
+        },
+        "inference": infer_stats.as_dict(
+            num_tracklets=int(query_feat.shape[0] + gallery_feat.shape[0])
+        ),
+        "splits": {
+            "query": query_stats.as_dict(num_tracklets=int(query_feat.shape[0])),
+            "gallery": gallery_stats.as_dict(
+                num_tracklets=int(gallery_feat.shape[0])
+            ),
+        },
+    }
+
+    rank_start = time.perf_counter()
     distmat = cosine_distance(query_feat, gallery_feat)
     metrics = evaluate_rank(
         distmat=distmat,
@@ -171,8 +221,11 @@ def main() -> None:
         query_camids=query_camids,
         gallery_camids=gallery_camids,
     )
+    efficiency["ranking_s"] = round(time.perf_counter() - rank_start, 4)
     print()
     print(format_metrics(metrics))
+    print()
+    print(format_efficiency(efficiency))
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -181,10 +234,12 @@ def main() -> None:
         "config_file": str(args.config_file),
         "mars_root": str(args.mars_root),
         "num_frames": args.num_frames,
+        "batch_size": args.batch_size,
         "device": args.device,
         "query_tracklets": int(query_feat.shape[0]),
         "gallery_tracklets": int(gallery_feat.shape[0]),
         "metrics": metrics,
+        "efficiency": efficiency,
     }
     args.output.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(f"Wrote {args.output}")
