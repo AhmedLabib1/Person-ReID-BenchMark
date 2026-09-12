@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import sys
-import time
 from pathlib import Path
 
 import cv2
 import numpy as np
 import torch
-from tqdm import tqdm
 
-from reid.profiling import ExtractStats, synchronize as sync_device
+from reid.models.runtime import extract_images
+from reid.profiling import ExtractStats
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -109,7 +108,7 @@ class FastReIDEncoder:
             return "cpu"
         return device
 
-    def _load_image(self, path: Path) -> torch.Tensor | None:
+    def preprocess(self, path: Path) -> torch.Tensor | None:
         image_bgr = cv2.imread(str(path))
         if image_bgr is None:
             return None
@@ -120,12 +119,14 @@ class FastReIDEncoder:
             (self.width, self.height),
             interpolation=cv2.INTER_CUBIC,
         )
-        tensor = torch.from_numpy(
+        return torch.from_numpy(
             resized.astype(np.float32).transpose(2, 0, 1)
         )
-        return tensor
 
     @torch.no_grad()
+    def forward_gpu(self, batch: torch.Tensor) -> torch.Tensor:
+        return self.model({"images": batch})
+
     def extract(
         self,
         crop_paths: list[Path],
@@ -133,124 +134,11 @@ class FastReIDEncoder:
         show_progress: bool = False,
         warmup_batches: int = 2,
     ) -> np.ndarray:
-        """
-        Return embeddings of shape (num_valid_crops, dim).
-
-        Timing for this call is stored on ``self.last_extract_stats``.
-        The first ``warmup_batches`` forwards are included in wall / GPU
-        totals but excluded from the steady-state rate.
-        """
-
-        stats = ExtractStats(warmup_batches=max(warmup_batches, 0))
-        self.last_extract_stats = stats
-
-        if not crop_paths:
-            return np.zeros((0, 0), dtype=np.float32)
-
-        features: list[np.ndarray] = []
-        batch: list[torch.Tensor] = []
-        iterator = crop_paths
-        if show_progress:
-            iterator = tqdm(crop_paths, desc="FastReID extract", unit="img")
-
-        sync_device(self.device)
-        wall_start = time.perf_counter()
-
-        def flush() -> None:
-            nonlocal batch
-            if not batch:
-                return
-            count_steady = stats.num_batches >= stats.warmup_batches
-            images_in_batch = len(batch)
-            chunk, forward_s = self._forward_batch(batch, return_time=True)
-            stats.num_batches += 1
-            stats.num_images += images_in_batch
-            stats.gpu_forward_s += forward_s
-            stats.batch_forward_s.append(forward_s)
-            if count_steady:
-                stats.timed_images += images_in_batch
-            features.append(chunk)
-            batch = []
-
-        for path in iterator:
-            load_start = time.perf_counter()
-            image = self._load_image(Path(path))
-            stats.preprocess_s += time.perf_counter() - load_start
-            if image is None:
-                raise FileNotFoundError(
-                    f"Could not read person crop: {path}"
-                )
-            batch.append(image)
-            if len(batch) >= batch_size:
-                flush()
-
-        flush()
-        sync_device(self.device)
-        stats.wall_s = time.perf_counter() - wall_start
-
-        if not features:
-            return np.zeros((0, 0), dtype=np.float32)
-
-        return np.concatenate(features, axis=0)
-
-    def extract_aligned(
-        self,
-        crop_paths: list[Path],
-        batch_size: int = 32,
-        show_progress: bool = False,
-    ) -> tuple[list[Path], np.ndarray]:
-        """Like extract(), but also returns the paths that were loaded."""
-
-        valid_paths: list[Path] = []
-        for path in crop_paths:
-            if Path(path).is_file():
-                valid_paths.append(Path(path))
-
-        embeddings = self.extract(
-            valid_paths,
+        return extract_images(
+            self,
+            crop_paths,
             batch_size=batch_size,
             show_progress=show_progress,
+            warmup_batches=warmup_batches,
+            desc="FastReID extract",
         )
-        if embeddings.shape[0] != len(valid_paths):
-            # Some files existed but cv2 could not decode them.
-            decoded_paths: list[Path] = []
-            decoded_images: list[torch.Tensor] = []
-            for path in valid_paths:
-                image = self._load_image(path)
-                if image is None:
-                    continue
-                decoded_paths.append(path)
-                decoded_images.append(image)
-            if not decoded_images:
-                return [], np.zeros((0, 0), dtype=np.float32)
-            chunks = [
-                self._forward_batch(decoded_images[i:i + batch_size])
-                for i in range(0, len(decoded_images), batch_size)
-            ]
-            return decoded_paths, np.concatenate(chunks, axis=0)
-
-        return valid_paths, embeddings
-
-    @torch.no_grad()
-    def _forward_batch(
-        self,
-        images: list[torch.Tensor],
-        return_time: bool = False,
-    ) -> np.ndarray | tuple[np.ndarray, float]:
-        batch = torch.stack(images, dim=0).to(self.device, non_blocking=True)
-        if self.device.type == "cuda":
-            start = torch.cuda.Event(enable_timing=True)
-            end = torch.cuda.Event(enable_timing=True)
-            start.record()
-            outputs = self.model({"images": batch})
-            end.record()
-            end.synchronize()
-            forward_s = start.elapsed_time(end) / 1000.0
-        else:
-            cpu_start = time.perf_counter()
-            outputs = self.model({"images": batch})
-            forward_s = time.perf_counter() - cpu_start
-        features = outputs.detach().cpu().numpy()
-        if return_time:
-            return features, forward_s
-        return features
