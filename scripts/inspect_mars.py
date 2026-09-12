@@ -49,9 +49,7 @@ def print_tracklet(
 
 
 def main() -> None:
-    dataset_root = Path(
-        "data/mars"
-    )
+    dataset_root = Path("datasets/MARS")
 
     print("Loading MARS dataset...")
     print(
@@ -63,7 +61,10 @@ def main() -> None:
         root=dataset_root
     )
 
-    splits = dataset.load()
+    include_train = any(dataset.bbox_train_dir.iterdir())
+    splits = dataset.load(include_train=include_train)
+    if not include_train:
+        print("bbox_train is empty; skipping train split.")
 
     print()
     print("MARS loaded successfully")
