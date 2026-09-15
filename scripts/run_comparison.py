@@ -10,17 +10,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from reid.models.registry import all_specs
+from reid.models.registry import all_specs, default_sweep_keys
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Download FastReID weights if needed, eval every model, then plot."
+        description="Download FastReID weights if needed, eval selected models, then plot."
     )
     parser.add_argument(
         "--models",
         nargs="+",
-        default=list(all_specs()),
+        default=default_sweep_keys(),
+        help="Registry keys. Default is the measured in-domain sweep, not the full zoo.",
     )
     parser.add_argument(
         "--datasets",
@@ -34,10 +35,12 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def download_weights() -> None:
+def download_weights(keys: list[str]) -> None:
     dest_dir = PROJECT_ROOT / "weights"
     dest_dir.mkdir(parents=True, exist_ok=True)
-    for spec in all_specs().values():
+    specs = all_specs()
+    for key in keys:
+        spec = specs[key]
         if spec.weights_url is None or spec.weights_path is None:
             continue
         if spec.weights_path.exists() and spec.weights_path.stat().st_size > 1_000_000:
@@ -55,7 +58,7 @@ def main() -> None:
     results.mkdir(parents=True, exist_ok=True)
 
     if not args.plot_only:
-        download_weights()
+        download_weights(args.models)
         for model in args.models:
             for dataset in args.datasets:
                 output = results / f"{model}_{dataset}.json"
@@ -82,8 +85,6 @@ def main() -> None:
     plot = [
         python,
         str(PROJECT_ROOT / "scripts" / "plot_comparison.py"),
-        "--results-dir",
-        str(results),
         "--output-dir",
         str(PROJECT_ROOT / "docs" / "benchmark"),
     ]

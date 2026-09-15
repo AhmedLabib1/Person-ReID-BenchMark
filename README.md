@@ -37,12 +37,14 @@ Person-ReID-BenchMark/
 │       ├── mars.py
 │       └── market1501.py
 │
+├── docs/benchmark/          # plots + committed metric JSON
 └── scripts/
     ├── test_tracklet.py
     ├── inspect_mars.py
     ├── eval_encoder.py
     ├── run_comparison.py
-    └── plot_comparison.py
+    ├── plot_comparison.py
+    └── import_v2_results.py
 ```
 ---
 
@@ -69,13 +71,20 @@ Zoo target on Market1501: **Rank-1 95.4% / mAP 88.2%**. Official FastReID CLI: *
 
 # Model comparison
 
-Same protocol for every encoder, no extra training:
+Same **eval protocol** for every encoder, no extra training on Market1501/MARS:
 
 - **Market1501:** one crop per query/gallery image (official image ReID)
 - **MARS:** 8-frame uniform sample → embed → mean-pool + L2 → cosine Rank-1 / mAP
-- RTX 5070 Laptop (8 GB), batch 32, `crowd-gpu`
+- Query/gallery counts: Market1501 3368 / 15913; MARS 1980 / 9330 (1840 valid queries)
+- RTX 5070 Laptop (8 GB), `crowd-gpu`
 
-ReID-trained CNNs stay in the 80–95% Rank-1 range. Generic foundation encoders (OpenCLIP, SigLIP) are much weaker — they were never trained to tell people apart.
+Two **training sets** are reported separately. Do not mix the tables: Market1501-trained R50 is in-domain (and MARS is the same campus). MSMT17-trained weights are a cross-domain transfer test, which is closer to “will this work on SHAWAF cameras.”
+
+JSON snapshots live in `docs/benchmark/results/` (committed) and `results/comparison/` (local overlay).
+
+## In-domain (Market1501 weights + foundation)
+
+ReID-trained CNNs stay in the 80–95% Rank-1 range. Frozen OpenCLIP / SigLIP are much weaker — they were never trained to tell people apart.
 
 ![Rank-1](docs/benchmark/rank1.png)
 
@@ -87,17 +96,15 @@ ReID-trained CNNs stay in the 80–95% Rank-1 range. Generic foundation encoders
 
 ![Accuracy vs latency](docs/benchmark/pareto.png)
 
-### Accuracy
-
 | Model | Trained on | Market1501 Rank-1 | Market1501 mAP | MARS Rank-1 | MARS mAP |
 |---|---|---:|---:|---:|---:|
-| FastReID SBS-R50 | Market1501 | 95.16 | 88.46 | **87.72** | **84.04** |
 | FastReID AGW-R50 | Market1501 | **95.31** | **88.49** | 85.71 | 80.67 |
+| FastReID SBS-R50 | Market1501 | 95.16 | 88.46 | **87.72** | **84.04** |
 | FastReID BoT-R50 | Market1501 | 93.85 | 86.30 | 81.52 | 75.99 |
 | SigLIP ViT-B/16 | WebLI | 20.58 | 6.51 | 38.97 | 21.49 |
 | OpenCLIP ViT-B/32 | LAION-2B | 13.15 | 4.06 | 21.52 | 11.03 |
 
-### Compute (Market1501 extract)
+### Compute (Market1501 extract, CUDA-event GPU time, batch 32)
 
 | Model | Params (M) | Weights (MiB) | Allocated (MiB) | Peak (MiB) | GPU ms/img | GPU img/s |
 |---|---:|---:|---:|---:|---:|---:|
@@ -107,12 +114,65 @@ ReID-trained CNNs stay in the 80–95% Rank-1 range. Generic foundation encoders
 | OpenCLIP ViT-B/32 | 87.5 | 334 | 334 | 436 | 1.71 | 584 |
 | SigLIP ViT-B/16 | 92.9 | 354 | 354 | 622 | 6.84 | 146 |
 
+## Cross-domain (MSMT17 weights, no fine-tune)
+
+Same Market1501 / MARS loaders and ranking. Checkpoints are the FastReID MSMT17 zoo (`msmt_*.pth`). Numbers imported from `feature/fastreid-benchmark-v2` after confirming split sizes and CMC protocol match.
+
+![MSMT Rank-1](docs/benchmark/rank1_msmt.png)
+
+![MSMT mAP](docs/benchmark/map_msmt.png)
+
+![Transfer Rank-1](docs/benchmark/transfer_rank1.png)
+
+![CMC Market1501](docs/benchmark/cmc_msmt_market1501.png)
+
+![CMC MARS](docs/benchmark/cmc_msmt_mars.png)
+
+| Model | Market1501 Rank-1 | Market1501 mAP | MARS Rank-1 | MARS mAP |
+|---|---:|---:|---:|---:|
+| SBS-R101-IBN | **61.61** | **32.82** | **28.91** | 24.04 |
+| SBS-R50-IBN | 61.55 | 32.05 | 28.80 | 24.04 |
+| SBS-R50 | 59.74 | 30.48 | **28.91** | **24.19** |
+| SBS-S50 | 57.10 | 29.19 | 27.50 | 23.66 |
+| BoT-R101-IBN | 52.02 | 26.49 | 27.66 | 23.42 |
+| BoT-R50-IBN | 50.42 | 26.22 | 27.77 | 23.48 |
+| BoT-S50 | 49.64 | 24.79 | 28.04 | 23.43 |
+| AGW-R101-IBN | 48.87 | 24.11 | 27.50 | 23.31 |
+| AGW-R50-IBN | 47.62 | 23.93 | 27.72 | 23.28 |
+| BoT-R50 | 43.68 | 20.96 | 28.37 | 23.29 |
+| AGW-S50 | 43.56 | 19.82 | 26.47 | 23.00 |
+| AGW-R50 | 43.53 | 21.61 | 28.42 | 23.25 |
+
+On the shared R50 recipes, Market1501 training → Market eval is ~95 Rank-1; MSMT17 training → Market eval is ~44–60 Rank-1. MARS stays high only for Market-trained models (same campus).
+
+## FastReID zoo still left
+
+Registered in `reid/models/registry.py` and runnable with `eval_encoder.py`, but **not extracted yet** on this protocol:
+
+| Key | Model | Notes |
+|---|---|---|
+| `sbs_r50_ibn` / `sbs_s50` / `sbs_r101_ibn` | SBS Market zoo | Best in-domain headroom in the official zoo |
+| `bot_r50_ibn` / `bot_s50` / `bot_r101_ibn` | BoT Market zoo | |
+| `agw_r50_ibn` / `agw_s50` / `agw_r101_ibn` | AGW Market zoo | |
+| `mgn_r50_ibn` | MGN-R50-IBN | Heavier; ~806 MB checkpoint |
+
+Not in this bench on purpose:
+
+- DukeMTMC zoo (dataset withdrawn)
+- Vehicle ReID (VeRi / VehicleID / VERI-Wild)
+- FastReID ViT (`bagtricks_vit.yml`) — no zoo `.pth`
+- MSMT17 **in-domain** eval (dataset copy not verified)
+- Newer non-FastReID models (SOLIDER, CLIP-ReID)
+
 ## How to run
 
 Activate `crowd-gpu` first. JSON is written to `results/comparison/{model}_{dataset}.json`.
 
-Registered `--model` keys: `sbs_r50`, `agw_r50`, `bot_r50`, `siglip_base`, `openclip_vitb32`.  
 `--dataset` is `market1501` or `mars`.
+
+**Measured in-domain keys:** `sbs_r50`, `agw_r50`, `bot_r50`, `siglip_base`, `openclip_vitb32`  
+**Imported MSMT17 keys:** `msmt_sbs_r50`, `msmt_sbs_r50_ibn`, `msmt_sbs_s50`, `msmt_sbs_r101_ibn`, and the same pattern for `bot` / `agw`  
+**Registered, not run yet:** `sbs_r50_ibn`, `sbs_s50`, `sbs_r101_ibn`, `mgn_r50_ibn`, …
 
 ### One model
 
@@ -123,21 +183,27 @@ python scripts/eval_encoder.py --model sbs_r50 --dataset market1501 --device cud
 python scripts/eval_encoder.py --model sbs_r50 --dataset mars --device cuda
 
 python scripts/eval_encoder.py --model agw_r50 --dataset market1501 --device cuda
-python scripts/eval_encoder.py --model agw_r50 --dataset mars --device cuda
-
-python scripts/eval_encoder.py --model bot_r50 --dataset market1501 --device cuda
 python scripts/eval_encoder.py --model bot_r50 --dataset mars --device cuda
 
 python scripts/eval_encoder.py --model siglip_base --dataset market1501 --device cuda
-python scripts/eval_encoder.py --model siglip_base --dataset mars --device cuda
-
-python scripts/eval_encoder.py --model openclip_vitb32 --dataset market1501 --device cuda
 python scripts/eval_encoder.py --model openclip_vitb32 --dataset mars --device cuda
 ```
 
-### All models
+MSMT17-trained SBS-R50 (downloads `weights/msmt_sbs_R50.pth` if missing):
 
-Downloads missing FastReID weights, evaluates every registered model on both datasets, then regenerates `docs/benchmark/` plots:
+```bash
+python scripts/eval_encoder.py --model msmt_sbs_r50 --dataset market1501 --device cuda
+python scripts/eval_encoder.py --model msmt_sbs_r50 --dataset mars --device cuda
+```
+
+A leftover Market zoo backbone:
+
+```bash
+python scripts/eval_encoder.py --model sbs_r101_ibn --dataset market1501 --device cuda
+python scripts/eval_encoder.py --model sbs_r101_ibn --dataset mars --device cuda
+```
+
+### Default sweep (the five measured in-domain models)
 
 ```bash
 conda activate crowd-gpu
@@ -150,10 +216,11 @@ Skip JSON files that already exist:
 python scripts/run_comparison.py --skip-existing --device cuda --batch-size 32
 ```
 
-A subset of models or datasets:
+A subset:
 
 ```bash
 python scripts/run_comparison.py --models sbs_r50 agw_r50 --datasets mars --device cuda
+python scripts/run_comparison.py --models sbs_r50_ibn sbs_s50 sbs_r101_ibn --device cuda
 ```
 
 Plots only (no extract):
@@ -162,7 +229,14 @@ Plots only (no extract):
 python scripts/plot_comparison.py
 ```
 
-MARS only needs `bbox_test/` plus `info/` (`bbox_train/` can stay empty). SBS-R50 on MARS: **Rank-1 87.72% / mAP 84.04%**. MARS and Market1501 share the same capture site, so this is an in-scene tracklet baseline rather than a harsh domain shift.
+Re-import teammate MSMT17 JSON/CMC into `docs/benchmark/results/`:
+
+```bash
+python scripts/import_v2_results.py
+python scripts/plot_comparison.py
+```
+
+MARS only needs `bbox_test/` plus `info/` (`bbox_train/` can stay empty). Market-trained SBS-R50 on MARS: **Rank-1 87.72% / mAP 84.04%**. MARS and Market1501 share the same capture site, so that number is an in-scene tracklet baseline rather than a harsh domain shift.
 
 ## Official Market1501 eval
 
