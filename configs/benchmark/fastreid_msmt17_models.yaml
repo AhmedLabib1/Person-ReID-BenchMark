@@ -1,0 +1,155 @@
+version: 1
+
+benchmark_name: fastreid_msmt17_pretrained
+
+source_dataset: MSMT17_V2
+
+fastreid_root: third_party/fast-reid
+
+checkpoint_root: checkpoints/fastreid/msmt17
+
+models:
+
+  # ============================================================
+  # BoT
+  # ============================================================
+
+  - id: bot_r50
+    family: BoT
+    backbone: R50
+    config: configs/MSMT17/bagtricks_R50.yml
+    checkpoint: msmt_bot_R50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_bot_R50.pth
+    official_msmt17:
+      rank1: 74.1
+      map: 50.2
+      minp: 10.4
+
+  - id: bot_r50_ibn
+    family: BoT
+    backbone: R50-IBN
+    config: configs/MSMT17/bagtricks_R50-ibn.yml
+    checkpoint: msmt_bot_R50-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_bot_R50-ibn.pth
+    official_msmt17:
+      rank1: 77.0
+      map: 54.4
+      minp: 12.5
+
+  - id: bot_s50
+    family: BoT
+    backbone: S50
+    config: configs/MSMT17/bagtricks_S50.yml
+    checkpoint: msmt_bot_S50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_bot_S50.pth
+    official_msmt17:
+      rank1: 80.8
+      map: 59.9
+      minp: 16.3
+
+  - id: bot_r101_ibn
+    family: BoT
+    backbone: R101-IBN
+    config: configs/MSMT17/bagtricks_R101-ibn.yml
+    checkpoint: msmt_bot_R101-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_bot_R101-ibn.pth
+    official_msmt17:
+      rank1: 81.0
+      map: 59.4
+      minp: 15.6
+
+  # ============================================================
+  # AGW
+  # ============================================================
+
+  - id: agw_r50
+    family: AGW
+    backbone: R50
+    config: configs/MSMT17/AGW_R50.yml
+    checkpoint: msmt_agw_R50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_agw_R50.pth
+    official_msmt17:
+      rank1: 78.3
+      map: 55.6
+      minp: 12.9
+
+  - id: agw_r50_ibn
+    family: AGW
+    backbone: R50-IBN
+    config: configs/MSMT17/AGW_R50-ibn.yml
+    checkpoint: msmt_agw_R50-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_agw_R50-ibn.pth
+    official_msmt17:
+      rank1: 81.2
+      map: 59.7
+      minp: 15.3
+
+  - id: agw_s50
+    family: AGW
+    backbone: S50
+    config: configs/MSMT17/AGW_S50.yml
+    checkpoint: msmt_agw_S50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_agw_S50.pth
+    official_msmt17:
+      rank1: 82.6
+      map: 62.6
+      minp: 17.7
+
+  - id: agw_r101_ibn
+    family: AGW
+    backbone: R101-IBN
+    config: configs/MSMT17/AGW_R101-ibn.yml
+    checkpoint: msmt_agw_R101-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_agw_R101-ibn.pth
+    official_msmt17:
+      rank1: 82.0
+      map: 61.4
+      minp: 17.3
+
+  # ============================================================
+  # SBS
+  # ============================================================
+
+  - id: sbs_r50
+    family: SBS
+    backbone: R50
+    config: configs/MSMT17/sbs_R50.yml
+    checkpoint: msmt_sbs_R50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_sbs_R50.pth
+    official_msmt17:
+      rank1: 81.8
+      map: 58.4
+      minp: 13.9
+
+  - id: sbs_r50_ibn
+    family: SBS
+    backbone: R50-IBN
+    config: configs/MSMT17/sbs_R50-ibn.yml
+    checkpoint: msmt_sbs_R50-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_sbs_R50-ibn.pth
+    official_msmt17:
+      rank1: 83.9
+      map: 60.6
+      minp: 15.2
+
+  - id: sbs_s50
+    family: SBS
+    backbone: S50
+    config: configs/MSMT17/sbs_S50.yml
+    checkpoint: msmt_sbs_S50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_sbs_S50.pth
+    official_msmt17:
+      rank1: 84.1
+      map: 61.7
+      minp: 15.2
+
+  - id: sbs_r101_ibn
+    family: SBS
+    backbone: R101-IBN
+    config: configs/MSMT17/sbs_R101-ibn.yml
+    checkpoint: msmt_sbs_R101-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/msmt_sbs_R101-ibn.pth
+    official_msmt17:
+      rank1: 84.8
+      map: 62.8
+      minp: 16.3

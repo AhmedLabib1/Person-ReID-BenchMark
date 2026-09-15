@@ -3,61 +3,217 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .mars import MarsSplits
-from .tracklet import Detection, Tracklet
+from reid.data.contracts import (
+    DatasetSplit,
+    ImageReIDDataset,
+    ImageSample,
+)
+from reid.data.paths import MARKET1501_ROOT
 
 
-_FILENAME = re.compile(r"([-\d]+)_c(\d)")
+DATASET_NAME = "Market1501"
+
+FILENAME_PATTERN = re.compile(
+    r"^([-\d]+)_c(\d)"
+)
 
 
-class Market1501Dataset:
+class Market1501Loader:
     """
-    Load Market1501 query / gallery images as one-frame tracklets.
+    Loader for the standard Market1501 dataset.
 
-    Junk images (person ID -1) are dropped. Distractors (person ID 0)
-    stay in the gallery, matching the standard Market1501 protocol.
+    Expected structure:
+
+    Market-1501-v15.09.15/
+        bounding_box_train/
+        bounding_box_test/
+        query/
+
+    Notes:
+        PID = -1:
+            junk images -> ignored
+
+        PID = 0:
+            background/distractor -> kept
+
+        Camera IDs in filenames:
+            1..6
+
+        Internal camera IDs:
+            0..5
     """
 
-    def __init__(self, root: str | Path) -> None:
+    def __init__(
+        self,
+        root: Path = MARKET1501_ROOT,
+    ) -> None:
         self.root = Path(root)
-        if (self.root / "query").is_dir():
-            self.data_dir = self.root
-        elif (self.root / "Market-1501-v15.09.15" / "query").is_dir():
-            self.data_dir = self.root / "Market-1501-v15.09.15"
-        else:
-            raise FileNotFoundError(
-                f"Market1501 query folder not found under {self.root}"
-            )
-        self.query_dir = self.data_dir / "query"
-        self.gallery_dir = self.data_dir / "bounding_box_test"
 
-    def load(self) -> MarsSplits:
-        return MarsSplits(
-            train=[],
-            query=self._load_split(self.query_dir, "QUERY"),
-            gallery=self._load_split(self.gallery_dir, "GALLERY"),
+        self.train_dir = (
+            self.root
+            / "bounding_box_train"
         )
 
-    def _load_split(self, image_dir: Path, split_name: str) -> list[Tracklet]:
-        if not image_dir.is_dir():
-            raise FileNotFoundError(f"Missing Market1501 folder: {image_dir}")
+        self.query_dir = (
+            self.root
+            / "query"
+        )
 
-        tracklets: list[Tracklet] = []
-        for index, path in enumerate(sorted(image_dir.glob("*.jpg"))):
-            match = _FILENAME.search(path.name)
-            if match is None:
-                continue
-            person_id = int(match.group(1))
-            camera_id = int(match.group(2))
-            if person_id == -1:
-                continue
-            tracklets.append(
-                Tracklet(
-                    tracklet_id=f"MARKET_{split_name}_{index + 1:06d}",
-                    camera_id=f"CAM_{camera_id:02d}",
-                    detections=[Detection(crop_path=path)],
-                    person_id=person_id,
-                    source="Market1501",
+        self.gallery_dir = (
+            self.root
+            / "bounding_box_test"
+        )
+
+        self._validate_structure()
+
+    def _validate_structure(self) -> None:
+        required_paths = (
+            self.root,
+            self.train_dir,
+            self.query_dir,
+            self.gallery_dir,
+        )
+
+        missing = [
+            path
+            for path in required_paths
+            if not path.exists()
+        ]
+
+        if missing:
+            message = "\n".join(
+                str(path)
+                for path in missing
+            )
+
+            raise FileNotFoundError(
+                "Market1501 required paths "
+                "are missing:\n"
+                f"{message}"
+            )
+
+    @staticmethod
+    def _parse_filename(
+        image_path: Path,
+    ) -> tuple[int, int]:
+        match = FILENAME_PATTERN.match(
+            image_path.name
+        )
+
+        if match is None:
+            raise ValueError(
+                "Invalid Market1501 filename:\n"
+                f"{image_path.name}"
+            )
+
+        person_id = int(
+            match.group(1)
+        )
+
+        camera_id = int(
+            match.group(2)
+        )
+
+        if person_id < -1:
+            raise ValueError(
+                f"Invalid person ID "
+                f"{person_id} in "
+                f"{image_path.name}"
+            )
+
+        if not 1 <= camera_id <= 6:
+            raise ValueError(
+                f"Invalid camera ID "
+                f"{camera_id} in "
+                f"{image_path.name}"
+            )
+
+        # Convert Market camera indexing:
+        #
+        # c1..c6
+        #
+        # into:
+        #
+        # 0..5
+        camera_id -= 1
+
+        return (
+            person_id,
+            camera_id,
+        )
+
+    def _load_split(
+        self,
+        directory: Path,
+        split: DatasetSplit,
+    ) -> tuple[ImageSample, ...]:
+
+        image_paths = sorted(
+            directory.glob("*.jpg")
+        )
+
+        samples: list[ImageSample] = []
+
+        for image_path in image_paths:
+            person_id, camera_id = (
+                self._parse_filename(
+                    image_path
                 )
             )
-        return tracklets
+
+            # Standard Market1501 protocol:
+            # PID -1 is junk and must be ignored.
+            if person_id == -1:
+                continue
+
+            sample = ImageSample(
+                dataset=DATASET_NAME,
+                split=split,
+                sample_id=image_path.stem,
+                person_id=person_id,
+                camera_id=camera_id,
+                image_path=image_path,
+            )
+
+            samples.append(
+                sample
+            )
+
+        return tuple(samples)
+
+    def load(self) -> ImageReIDDataset:
+        train = self._load_split(
+            directory=self.train_dir,
+            split=DatasetSplit.TRAIN,
+        )
+
+        query = self._load_split(
+            directory=self.query_dir,
+            split=DatasetSplit.QUERY,
+        )
+
+        gallery = self._load_split(
+            directory=self.gallery_dir,
+            split=DatasetSplit.GALLERY,
+        )
+
+        return ImageReIDDataset(
+            name=DATASET_NAME,
+            train=train,
+            query=query,
+            gallery=gallery,
+        )
+
+
+def load_market1501(
+    root: Path = MARKET1501_ROOT,
+) -> ImageReIDDataset:
+    """
+    Convenience function used by the benchmark.
+    """
+
+    loader = Market1501Loader(
+        root=root,
+    )
+
+    return loader.load()

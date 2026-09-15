@@ -1,462 +1,484 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 from scipy.io import loadmat
 
-from .tracklet import Detection, Tracklet
+from reid.data.contracts import (
+    DatasetSplit,
+    TrackletReIDDataset,
+    TrackletSample,
+)
+from reid.data.paths import MARS_ROOT
 
 
-@dataclass
-class MarsSplits:
+DATASET_NAME = "MARS"
+
+
+class MarsLoader:
     """
-    Contains the three standard MARS splits.
+    Loader for the standard MARS video person ReID dataset.
 
-    train:
-        Tracklets used for model training.
+    Expected structure:
 
-    query:
-        Tracklets used as search queries during evaluation.
+    mars/
+        bbox_train/
+        bbox_test/
+        info/
+            train_name.txt
+            test_name.txt
+            tracks_train_info.mat
+            tracks_test_info.mat
+            query_IDX.mat
 
-    gallery:
-        Candidate tracklets searched for each query.
+    MARS metadata row format:
+
+        [start_index, end_index, person_id, camera_id]
+
+    Notes:
+        - start/end indices are 1-based and inclusive.
+        - PID = -1 means junk and is ignored.
+        - Camera IDs in metadata are 1..6.
+        - Internal camera IDs are converted to 0..5.
     """
 
-    train: list[Tracklet]
-    query: list[Tracklet]
-    gallery: list[Tracklet]
-
-
-class MarsDataset:
-    """
-    Loader for the MARS video person ReID dataset.
-
-    The loader converts the original MARS representation:
-
-        image names
-        +
-        MATLAB track metadata
-
-    into SHAWAF Tracklet objects.
-    """
-
-    NUM_CAMERAS = 6
-
-    def __init__(self, root: str | Path) -> None:
+    def __init__(
+        self,
+        root: Path = MARS_ROOT,
+    ) -> None:
         self.root = Path(root)
 
-        self.bbox_train_dir = self.root / "bbox_train"
-        self.bbox_test_dir = self.root / "bbox_test"
-        self.info_dir = self.root / "info"
+        self.train_dir = (
+            self.root
+            / "bbox_train"
+        )
+
+        self.test_dir = (
+            self.root
+            / "bbox_test"
+        )
+
+        self.info_dir = (
+            self.root
+            / "info"
+        )
 
         self.train_name_path = (
-            self.info_dir / "train_name.txt"
+            self.info_dir
+            / "train_name.txt"
         )
 
         self.test_name_path = (
-            self.info_dir / "test_name.txt"
+            self.info_dir
+            / "test_name.txt"
         )
 
         self.track_train_info_path = (
-            self.info_dir / "tracks_train_info.mat"
+            self.info_dir
+            / "tracks_train_info.mat"
         )
 
         self.track_test_info_path = (
-            self.info_dir / "tracks_test_info.mat"
+            self.info_dir
+            / "tracks_test_info.mat"
         )
 
         self.query_idx_path = (
-            self.info_dir / "query_IDX.mat"
+            self.info_dir
+            / "query_IDX.mat"
         )
 
-        self._validate_dataset_structure()
+        self._validate_structure()
 
-    def load(self, include_train: bool = True) -> MarsSplits:
-        """
-        Load the standard MARS train/query/gallery splits.
-
-        include_train:
-            When False, skip building train tracklets. Useful for
-            evaluation-only runs that only need bbox_test.
-        """
-
-        train_names = self._read_names(
-            self.train_name_path
-        )
-
-        test_names = self._read_names(
-            self.test_name_path
-        )
-
-        train_metadata = self._load_mat_array(
-            path=self.track_train_info_path,
-            key="track_train_info",
-        )
-
-        test_metadata = self._load_mat_array(
-            path=self.track_test_info_path,
-            key="track_test_info",
-        )
-
-        query_indices = self._load_mat_array(
-            path=self.query_idx_path,
-            key="query_IDX",
-        ).squeeze()
-
-        # MATLAB uses 1-based indexing:
-        #
-        # first element = 1
-        #
-        # Python uses 0-based indexing:
-        #
-        # first element = 0
-        #
-        # Therefore:
-        #
-        # 1, 2, 3 ...
-        # becomes
-        # 0, 1, 2 ...
-        query_indices = (
-            query_indices.astype(np.int64) - 1
-        )
-
-        train_tracklets: list[Tracklet] = []
-        if include_train:
-            train_tracklets = self._build_tracklets(
-                names=train_names,
-                metadata=train_metadata,
-                images_dir=self.bbox_train_dir,
-                split_name="TRAIN",
-            )
-
-        query_metadata = test_metadata[
-            query_indices
-        ]
-
-        query_tracklets = self._build_tracklets(
-            names=test_names,
-            metadata=query_metadata,
-            images_dir=self.bbox_test_dir,
-            split_name="QUERY",
-        )
-
-        # Query tracklets must not also appear in gallery.
-        query_index_set = set(
-            query_indices.tolist()
-        )
-
-        gallery_indices = [
-            index
-            for index in range(
-                len(test_metadata)
-            )
-            if index not in query_index_set
-        ]
-
-        gallery_metadata = test_metadata[
-            gallery_indices
-        ]
-
-        gallery_tracklets = self._build_tracklets(
-            names=test_names,
-            metadata=gallery_metadata,
-            images_dir=self.bbox_test_dir,
-            split_name="GALLERY",
-        )
-
-        return MarsSplits(
-            train=train_tracklets,
-            query=query_tracklets,
-            gallery=gallery_tracklets,
-        )
-
-    def _validate_dataset_structure(
-        self,
-    ) -> None:
-        """
-        Make sure all required MARS files exist.
-        """
-
-        required_paths = [
-            self.bbox_train_dir,
-            self.bbox_test_dir,
+    def _validate_structure(self) -> None:
+        required_paths = (
+            self.root,
+            self.train_dir,
+            self.test_dir,
             self.info_dir,
             self.train_name_path,
             self.test_name_path,
             self.track_train_info_path,
             self.track_test_info_path,
             self.query_idx_path,
-        ]
+        )
 
-        missing_paths = [
+        missing = [
             path
             for path in required_paths
             if not path.exists()
         ]
 
-        if missing_paths:
-            formatted = "\n".join(
-                f"  - {path}"
-                for path in missing_paths
+        if missing:
+            message = "\n".join(
+                str(path)
+                for path in missing
             )
 
             raise FileNotFoundError(
-                "MARS dataset structure is incomplete.\n"
-                "Missing paths:\n"
-                f"{formatted}"
+                "MARS required paths "
+                "are missing:\n"
+                f"{message}"
             )
 
     @staticmethod
-    def _read_names(
+    def _load_names(
         path: Path,
-    ) -> list[str]:
-        """
-        Read image names from train_name.txt
-        or test_name.txt.
-        """
-
+    ) -> tuple[str, ...]:
         with path.open(
             "r",
             encoding="utf-8",
         ) as file:
-            names = [
+            names = tuple(
                 line.strip()
                 for line in file
                 if line.strip()
-            ]
+            )
+
+        if not names:
+            raise RuntimeError(
+                f"No image names found in:\n"
+                f"{path}"
+            )
 
         return names
 
     @staticmethod
-    def _load_mat_array(
+    def _load_track_info(
         path: Path,
         key: str,
     ) -> np.ndarray:
-        """
-        Load one array from a MATLAB .mat file.
-        """
-
-        mat_data = loadmat(path)
-
-        if key not in mat_data:
-            raise KeyError(
-                f"Key '{key}' was not found "
-                f"in {path}"
-            )
-
-        return np.asarray(
-            mat_data[key]
+        data = loadmat(
+            path
         )
 
-    def _build_tracklets(
+        if key not in data:
+            raise KeyError(
+                f"Key '{key}' not found in:\n"
+                f"{path}"
+            )
+
+        track_info = np.asarray(
+            data[key]
+        )
+
+        if (
+            track_info.ndim != 2
+            or track_info.shape[1] != 4
+        ):
+            raise RuntimeError(
+                "Unexpected MARS track metadata "
+                f"shape: {track_info.shape}"
+            )
+
+        return track_info.astype(
+            np.int64,
+            copy=False,
+        )
+
+    def _load_query_indices(
         self,
-        names: list[str],
-        metadata: np.ndarray,
-        images_dir: Path,
-        split_name: str,
-    ) -> list[Tracklet]:
-        """
-        Convert MARS metadata rows into SHAWAF Tracklet objects.
+        num_test_tracklets: int,
+    ) -> np.ndarray:
+        data = loadmat(
+            self.query_idx_path
+        )
 
-        Each metadata row has:
+        if "query_IDX" not in data:
+            raise KeyError(
+                "Key 'query_IDX' not found in:\n"
+                f"{self.query_idx_path}"
+            )
 
-        [
+        query_indices = np.asarray(
+            data["query_IDX"]
+        ).reshape(-1)
+
+        query_indices = query_indices.astype(
+            np.int64,
+            copy=False,
+        )
+
+        # MARS stores query indices as 1-based MATLAB indices.
+        query_indices = (
+            query_indices - 1
+        )
+
+        if len(query_indices) != len(
+            np.unique(query_indices)
+        ):
+            raise RuntimeError(
+                "Duplicate indices found in "
+                "MARS query_IDX."
+            )
+
+        if (
+            query_indices.min() < 0
+            or query_indices.max()
+            >= num_test_tracklets
+        ):
+            raise RuntimeError(
+                "MARS query index is outside "
+                "the test-tracklet range."
+            )
+
+        return query_indices
+
+    def _build_tracklet(
+        self,
+        *,
+        names: tuple[str, ...],
+        metadata_row: np.ndarray,
+        split: DatasetSplit,
+        home_dir: Path,
+        source_name: str,
+        source_index: int,
+    ) -> TrackletSample | None:
+        (
             start_index,
             end_index,
             person_id,
-            camera_id
+            camera_id,
+        ) = (
+            int(value)
+            for value in metadata_row
+        )
+
+        # Standard MARS protocol:
+        # PID -1 represents junk.
+        if person_id == -1:
+            return None
+
+        if person_id < 0:
+            raise RuntimeError(
+                f"Unexpected MARS PID: "
+                f"{person_id}"
+            )
+
+        if not 1 <= camera_id <= 6:
+            raise RuntimeError(
+                f"Invalid MARS camera ID: "
+                f"{camera_id}"
+            )
+
+        if start_index < 1:
+            raise RuntimeError(
+                "MARS start index must be "
+                "1-based and >= 1."
+            )
+
+        if end_index < start_index:
+            raise RuntimeError(
+                "MARS tracklet end index "
+                "precedes start index."
+            )
+
+        if end_index > len(names):
+            raise RuntimeError(
+                "MARS tracklet references "
+                "an image outside the name list."
+            )
+
+        # MATLAB:
+        #
+        # start_index ... end_index
+        #
+        # inclusive, 1-based.
+        #
+        # Python:
+        #
+        # start_index - 1 : end_index
+        frame_names = names[
+            start_index - 1:
+            end_index
         ]
 
-        start_index/end_index refer to positions inside
-        train_name.txt or test_name.txt.
+        if not frame_names:
+            raise RuntimeError(
+                "MARS tracklet contains "
+                "zero frames."
+            )
 
-        They are NOT real video frame numbers.
-        """
+        identity_prefixes = {
+            name[:4]
+            for name in frame_names
+        }
 
-        tracklets: list[Tracklet] = []
+        if len(identity_prefixes) != 1:
+            raise RuntimeError(
+                "One MARS tracklet contains "
+                "multiple identity folders."
+            )
 
-        for metadata_index, row in enumerate(
-            metadata
+        frame_paths = tuple(
+            home_dir
+            / frame_name[:4]
+            / frame_name
+            for frame_name in frame_names
+        )
+
+        # Convert:
+        #
+        # camera 1..6
+        #
+        # into:
+        #
+        # camera 0..5
+        internal_camera_id = (
+            camera_id - 1
+        )
+
+        tracklet_id = (
+            f"{source_name}_"
+            f"{source_index:05d}"
+        )
+
+        return TrackletSample(
+            dataset=DATASET_NAME,
+            split=split,
+            tracklet_id=tracklet_id,
+            person_id=person_id,
+            camera_id=internal_camera_id,
+            frame_paths=frame_paths,
+        )
+
+    def _process_rows(
+        self,
+        *,
+        names: tuple[str, ...],
+        track_info: np.ndarray,
+        source_indices: np.ndarray,
+        split: DatasetSplit,
+        home_dir: Path,
+        source_name: str,
+    ) -> tuple[TrackletSample, ...]:
+        tracklets: list[TrackletSample] = []
+
+        for row, source_index in zip(
+            track_info,
+            source_indices,
         ):
-            (
-                start_index,
-                end_index,
-                person_id,
-                camera_id,
-            ) = [
-                int(value)
-                for value in row
-            ]
-
-            # MARS uses person_id = -1
-            # for junk / distractor samples.
-            #
-            # They are ignored in standard ReID evaluation.
-            if person_id == -1:
-                continue
-
-            if not (
-                1
-                <= camera_id
-                <= self.NUM_CAMERAS
-            ):
-                raise ValueError(
-                    f"Invalid MARS camera ID: "
-                    f"{camera_id}"
-                )
-
-            # MARS metadata uses MATLAB indexing.
-            #
-            # Example:
-            #
-            # start_index = 1
-            # end_index   = 3
-            #
-            # means:
-            #
-            # names[0:3]
-            #
-            # Python excludes the final slice position,
-            # which gives elements 0, 1, 2.
-            image_names = names[
-                start_index - 1:end_index
-            ]
-
-            if not image_names:
-                raise ValueError(
-                    "Tracklet contains zero images. "
-                    f"Metadata row: {row}"
-                )
-
-            self._validate_tracklet_images(
-                image_names=image_names,
-                expected_person_id=person_id,
-                expected_camera_id=camera_id,
-            )
-
-            detections = [
-                Detection(
-                    crop_path=self._build_image_path(
-                        images_dir=images_dir,
-                        image_name=image_name,
-                    )
-                )
-                for image_name in image_names
-            ]
-
-            tracklet_id = (
-                f"MARS_{split_name}_"
-                f"{metadata_index + 1:06d}"
-            )
-
-            tracklet = Tracklet(
-                tracklet_id=tracklet_id,
-                camera_id=(
-                    f"CAM_{camera_id:02d}"
+            tracklet = self._build_tracklet(
+                names=names,
+                metadata_row=row,
+                split=split,
+                home_dir=home_dir,
+                source_name=source_name,
+                source_index=int(
+                    source_index
                 ),
-                detections=detections,
-                person_id=person_id,
-                source="MARS",
             )
 
-            tracklets.append(tracklet)
+            if tracklet is not None:
+                tracklets.append(
+                    tracklet
+                )
 
-        return tracklets
+        return tuple(tracklets)
 
-    @staticmethod
-    def _build_image_path(
-        images_dir: Path,
-        image_name: str,
-    ) -> Path:
-        """
-        MARS stores images inside a folder named
-        using the first four characters of the image name.
-
-        Example:
-
-        image:
-            0001C1T0001F001.jpg
-
-        folder:
-            0001/
-
-        final path:
-            bbox_train/0001/0001C1T0001F001.jpg
-        """
-
-        person_folder = image_name[:4]
-
-        return (
-            images_dir
-            / person_folder
-            / image_name
+    def load(
+        self,
+    ) -> TrackletReIDDataset:
+        train_names = self._load_names(
+            self.train_name_path
         )
 
-    @staticmethod
-    def _validate_tracklet_images(
-        image_names: list[str],
-        expected_person_id: int,
-        expected_camera_id: int,
-    ) -> None:
-        """
-        Check that all images inside one MARS tracklet
-        belong to the same person and camera.
-        """
-
-        person_names = {
-            image_name[:4]
-            for image_name in image_names
-        }
-
-        if len(person_names) != 1:
-            raise ValueError(
-                "One MARS tracklet contains "
-                "multiple person IDs."
-            )
-
-        camera_names = {
-            image_name[5]
-            for image_name in image_names
-        }
-
-        if len(camera_names) != 1:
-            raise ValueError(
-                "One MARS tracklet contains "
-                "images from multiple cameras."
-            )
-
-        expected_person_name = (
-            f"{expected_person_id:04d}"
+        test_names = self._load_names(
+            self.test_name_path
         )
 
-        actual_person_name = next(
-            iter(person_names)
+        track_train = self._load_track_info(
+            self.track_train_info_path,
+            key="track_train_info",
         )
 
-        if (
-            actual_person_name
-            != expected_person_name
-        ):
-            raise ValueError(
-                "Person ID mismatch between "
-                "MARS metadata and image name. "
-                f"Expected {expected_person_name}, "
-                f"found {actual_person_name}."
-            )
-
-        actual_camera_id = int(
-            next(iter(camera_names))
+        track_test = self._load_track_info(
+            self.track_test_info_path,
+            key="track_test_info",
         )
 
-        if (
-            actual_camera_id
-            != expected_camera_id
-        ):
-            raise ValueError(
-                "Camera ID mismatch between "
-                "MARS metadata and image name. "
-                f"Expected {expected_camera_id}, "
-                f"found {actual_camera_id}."
+        query_indices = (
+            self._load_query_indices(
+                num_test_tracklets=(
+                    track_test.shape[0]
+                )
             )
+        )
+
+        all_test_indices = np.arange(
+            track_test.shape[0],
+            dtype=np.int64,
+        )
+
+        query_mask = np.zeros(
+            track_test.shape[0],
+            dtype=bool,
+        )
+
+        query_mask[
+            query_indices
+        ] = True
+
+        gallery_indices = (
+            all_test_indices[
+                ~query_mask
+            ]
+        )
+
+        track_query = track_test[
+            query_indices
+        ]
+
+        track_gallery = track_test[
+            gallery_indices
+        ]
+
+        train_indices = np.arange(
+            track_train.shape[0],
+            dtype=np.int64,
+        )
+
+        train = self._process_rows(
+            names=train_names,
+            track_info=track_train,
+            source_indices=train_indices,
+            split=DatasetSplit.TRAIN,
+            home_dir=self.train_dir,
+            source_name="mars_train",
+        )
+
+        query = self._process_rows(
+            names=test_names,
+            track_info=track_query,
+            source_indices=query_indices,
+            split=DatasetSplit.QUERY,
+            home_dir=self.test_dir,
+            source_name="mars_test",
+        )
+
+        gallery = self._process_rows(
+            names=test_names,
+            track_info=track_gallery,
+            source_indices=gallery_indices,
+            split=DatasetSplit.GALLERY,
+            home_dir=self.test_dir,
+            source_name="mars_test",
+        )
+
+        return TrackletReIDDataset(
+            name=DATASET_NAME,
+            train=train,
+            query=query,
+            gallery=gallery,
+        )
+
+
+def load_mars(
+    root: Path = MARS_ROOT,
+) -> TrackletReIDDataset:
+    loader = MarsLoader(
+        root=root,
+    )
+
+    return loader.load()
