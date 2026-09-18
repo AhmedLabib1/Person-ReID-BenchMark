@@ -34,20 +34,30 @@ OUTPUT_MARKDOWN = (
 
 
 DATASETS = (
+    "msmt17",
     "market1501",
     "mars",
 )
 
 
 PROTOCOLS = {
+    "msmt17": "single_image_l2",
     "market1501": "single_image_l2",
     "mars": "uniform8_mean_raw_l2",
 }
 
 
-DATASET_DISPLAY_NAMES = {
+DISPLAY_NAMES = {
+    "msmt17": "MSMT17_V2",
     "market1501": "Market1501",
     "mars": "MARS",
+}
+
+
+EVALUATION_TYPES = {
+    "msmt17": "in-domain",
+    "market1501": "cross-domain",
+    "mars": "cross-domain",
 }
 
 
@@ -56,24 +66,26 @@ def load_registry() -> list[dict]:
         "r",
         encoding="utf-8",
     ) as file:
-        registry = yaml.safe_load(file)
+        registry = yaml.safe_load(
+            file
+        )
 
-    return registry["models"]
+    return registry[
+        "models"
+    ]
 
 
 def result_path(
     model_id: str,
     dataset: str,
 ) -> Path:
-    protocol = PROTOCOLS[
-        dataset
-    ]
-
     return (
         RESULT_ROOT
         / model_id
         / dataset
-        / protocol
+        / PROTOCOLS[
+            dataset
+        ]
         / "metrics.json"
     )
 
@@ -97,27 +109,33 @@ def load_result(
         "r",
         encoding="utf-8",
     ) as file:
-        result = json.load(file)
-
-    if result["model_id"] != model_id:
-        raise RuntimeError(
-            f"Model mismatch in:\n{path}"
+        result = json.load(
+            file
         )
 
-    if result["dataset"] != dataset:
+    if (
+        result["model_id"]
+        != model_id
+    ):
         raise RuntimeError(
-            f"Dataset mismatch in:\n{path}"
+            "Model mismatch in:\n"
+            f"{path}"
         )
 
-    expected_protocol = (
-        PROTOCOLS[
-            dataset
-        ]
-    )
+    if (
+        result["dataset"]
+        != dataset
+    ):
+        raise RuntimeError(
+            "Dataset mismatch in:\n"
+            f"{path}"
+        )
 
     if (
         result["protocol"]
-        != expected_protocol
+        != PROTOCOLS[
+            dataset
+        ]
     ):
         raise RuntimeError(
             "Protocol mismatch in:\n"
@@ -128,13 +146,11 @@ def load_result(
 
 
 def percentage(
-    value: float | None,
-) -> float | None:
-    if value is None:
-        return None
-
+    value: float,
+) -> float:
     return round(
-        float(value) * 100.0,
+        float(value)
+        * 100.0,
         4,
     )
 
@@ -145,31 +161,53 @@ def build_rows(
     rows: list[dict] = []
 
     for model in models:
-        model_id = model["id"]
-
         for dataset in DATASETS:
             result = load_result(
-                model_id,
+                model["id"],
                 dataset,
             )
 
             row = {
-                "model_id": model_id,
-                "family": model["family"],
-                "backbone": model["backbone"],
+                "model_id": (
+                    model[
+                        "id"
+                    ]
+                ),
+
+                "family": (
+                    model[
+                        "family"
+                    ]
+                ),
+
+                "backbone": (
+                    model[
+                        "backbone"
+                    ]
+                ),
 
                 "dataset": (
-                    DATASET_DISPLAY_NAMES[
+                    DISPLAY_NAMES[
+                        dataset
+                    ]
+                ),
+
+                "evaluation_type": (
+                    EVALUATION_TYPES[
                         dataset
                     ]
                 ),
 
                 "protocol": (
-                    result["protocol"]
+                    result[
+                        "protocol"
+                    ]
                 ),
 
                 "query_samples": (
-                    result["query_samples"]
+                    result[
+                        "query_samples"
+                    ]
                 ),
 
                 "gallery_samples": (
@@ -197,23 +235,33 @@ def build_rows(
                 ),
 
                 "rank_1": percentage(
-                    result["rank_1"]
+                    result[
+                        "rank_1"
+                    ]
                 ),
 
                 "rank_5": percentage(
-                    result["rank_5"]
+                    result[
+                        "rank_5"
+                    ]
                 ),
 
                 "rank_10": percentage(
-                    result["rank_10"]
+                    result[
+                        "rank_10"
+                    ]
                 ),
 
                 "mAP": percentage(
-                    result["mAP"]
+                    result[
+                        "mAP"
+                    ]
                 ),
 
                 "mINP": percentage(
-                    result["mINP"]
+                    result[
+                        "mINP"
+                    ]
                 ),
 
                 "evaluation_seconds": round(
@@ -246,21 +294,21 @@ def write_csv(
         exist_ok=True,
     )
 
-    fieldnames = list(
-        rows[0].keys()
-    )
-
     with OUTPUT_CSV.open(
         "w",
         newline="",
         encoding="utf-8",
     ) as file:
+
         writer = csv.DictWriter(
             file,
-            fieldnames=fieldnames,
+            fieldnames=list(
+                rows[0].keys()
+            ),
         )
 
         writer.writeheader()
+
         writer.writerows(
             rows
         )
@@ -270,8 +318,15 @@ def markdown_table(
     rows: list[dict],
 ) -> str:
     lines = [
-        "| Model | Family | Backbone | Rank-1 | Rank-5 | Rank-10 | mAP | mINP |",
-        "|---|---|---|---:|---:|---:|---:|---:|",
+        (
+            "| Model | Family | Backbone | "
+            "Rank-1 | Rank-5 | Rank-10 | "
+            "mAP | mINP |"
+        ),
+        (
+            "|---|---|---|---:|---:|"
+            "---:|---:|---:|"
+        ),
     ]
 
     for row in rows:
@@ -296,30 +351,43 @@ def write_markdown(
     rows: list[dict],
 ) -> None:
     sections = [
-        "# SHAWAF ReID Cross-Domain Benchmark",
+        (
+            "# SHAWAF ReID "
+            "In-Domain + Cross-Domain Benchmark"
+        ),
         "",
         (
             "All FastReID checkpoints were trained "
-            "on MSMT17 and evaluated without "
-            "fine-tuning on Market1501 and MARS."
+            "on MSMT17_V2. MSMT17_V2 is evaluated "
+            "in-domain, while Market1501 and MARS "
+            "are evaluated cross-domain without "
+            "fine-tuning."
         ),
         "",
     ]
 
     for dataset in (
+        "MSMT17_V2",
         "Market1501",
         "MARS",
     ):
         dataset_rows = [
             row
             for row in rows
-            if row["dataset"] == dataset
+            if (
+                row["dataset"]
+                == dataset
+            )
         ]
 
         dataset_rows.sort(
             key=lambda row: (
-                row["rank_1"],
-                row["mAP"],
+                row[
+                    "rank_1"
+                ],
+                row[
+                    "mAP"
+                ],
             ),
             reverse=True,
         )
@@ -340,19 +408,20 @@ def write_markdown(
             "## Protocols",
             "",
             (
+                "- MSMT17_V2: single-image "
+                "embedding -> L2 normalization "
+                "(in-domain)."
+            ),
+            (
                 "- Market1501: single-image "
-                "embedding followed by L2 normalization."
+                "embedding -> L2 normalization "
+                "(cross-domain)."
             ),
             (
-                "- MARS: 8 uniformly sampled frames "
-                "per tracklet, raw-frame mean pooling, "
-                "then final L2 normalization."
-            ),
-            "",
-            (
-                "MSMT17_V2 in-domain evaluation is "
-                "excluded until a verified copy of "
-                "the dataset is available."
+                "- MARS: uniform 8-frame sampling "
+                "-> raw-feature mean pooling "
+                "-> final L2 normalization "
+                "(cross-domain)."
             ),
             "",
         ]
@@ -362,6 +431,7 @@ def write_markdown(
         "w",
         encoding="utf-8",
     ) as file:
+
         file.write(
             "\n".join(
                 sections
@@ -376,23 +446,34 @@ def print_dataset_table(
     dataset_rows = [
         row
         for row in rows
-        if row["dataset"] == dataset
+        if (
+            row[
+                "dataset"
+            ]
+            == dataset
+        )
     ]
 
     dataset_rows.sort(
         key=lambda row: (
-            row["rank_1"],
-            row["mAP"],
+            row[
+                "rank_1"
+            ],
+            row[
+                "mAP"
+            ],
         ),
         reverse=True,
     )
 
     print()
-    print("=" * 110)
+    print("=" * 100)
+
     print(
         f"{dataset.upper()} RESULTS"
     )
-    print("=" * 110)
+
+    print("=" * 100)
 
     print(
         f"{'Model':<18}"
@@ -405,7 +486,7 @@ def print_dataset_table(
         f"{'mINP':>9}"
     )
 
-    print("-" * 110)
+    print("-" * 100)
 
     for row in dataset_rows:
         print(
@@ -421,16 +502,25 @@ def print_dataset_table(
 
 
 def main() -> None:
+    models = (
+        load_registry()
+    )
+
+    expected_results = (
+        len(models)
+        * len(DATASETS)
+    )
+
     print("=" * 88)
+
     print(
         "SHAWAF ReID - "
-        "Cross-Domain Results Summary"
+        "In-Domain + Cross-Domain "
+        "Results Summary"
     )
+
     print("=" * 88)
 
-    models = load_registry()
-
-    print()
     print(
         f"Models                  : "
         f"{len(models)}"
@@ -439,11 +529,6 @@ def main() -> None:
     print(
         f"Datasets                : "
         f"{len(DATASETS)}"
-    )
-
-    expected_results = (
-        len(models)
-        * len(DATASETS)
     )
 
     print(
@@ -455,12 +540,10 @@ def main() -> None:
         models
     )
 
-    print(
-        f"Loaded results          : "
-        f"{len(rows)}"
-    )
-
-    if len(rows) != expected_results:
+    if (
+        len(rows)
+        != expected_results
+    ):
         raise RuntimeError(
             "Benchmark result count "
             "is incomplete."
@@ -474,15 +557,15 @@ def main() -> None:
         rows
     )
 
-    print_dataset_table(
-        rows,
+    for dataset in (
+        "MSMT17_V2",
         "Market1501",
-    )
-
-    print_dataset_table(
-        rows,
         "MARS",
-    )
+    ):
+        print_dataset_table(
+            rows,
+            dataset,
+        )
 
     print()
     print("=" * 88)
@@ -499,10 +582,9 @@ def main() -> None:
         f"{OUTPUT_MARKDOWN}"
     )
 
-    print()
     print(
-        "All 24 cross-domain "
-        "results were loaded successfully."
+        "All 36 benchmark results "
+        "were loaded successfully."
     )
 
 

@@ -38,7 +38,8 @@ def read_csv(
 ) -> list[dict[str, str]]:
     if not path.exists():
         raise FileNotFoundError(
-            f"Required CSV not found:\n{path}"
+            "Required CSV not found:\n"
+            f"{path}"
         )
 
     with path.open(
@@ -46,52 +47,53 @@ def read_csv(
         newline="",
         encoding="utf-8",
     ) as file:
+
         return list(
-            csv.DictReader(file)
+            csv.DictReader(
+                file
+            )
         )
 
 
-def to_float(
-    value: str,
-) -> float:
-    return float(value)
-
-
-def to_int(
-    value: str,
-) -> int:
-    return int(value)
-
-
 def load_accuracy() -> dict[str, dict]:
-    rows = read_csv(
-        ACCURACY_CSV
-    )
-
     models: dict[
         str,
         dict,
     ] = {}
 
-    for row in rows:
-        model_id = row[
-            "model_id"
-        ]
+    for row in read_csv(
+        ACCURACY_CSV
+    ):
+        model_id = (
+            row[
+                "model_id"
+            ]
+        )
 
-        dataset = row[
-            "dataset"
-        ].lower()
+        dataset = (
+            row[
+                "dataset"
+            ]
+            .lower()
+        )
 
         model = models.setdefault(
             model_id,
             {
                 "model_id": model_id,
-                "family": row["family"],
-                "backbone": row["backbone"],
+                "family": row[
+                    "family"
+                ],
+                "backbone": row[
+                    "backbone"
+                ],
             },
         )
 
-        if dataset == "market1501":
+        if dataset == "msmt17_v2":
+            prefix = "msmt"
+
+        elif dataset == "market1501":
             prefix = "market"
 
         elif dataset == "mars":
@@ -100,56 +102,67 @@ def load_accuracy() -> dict[str, dict]:
         else:
             raise RuntimeError(
                 "Unexpected dataset in "
-                f"accuracy summary: {dataset}"
+                "accuracy summary: "
+                f"{dataset}"
             )
 
         model[
             f"{prefix}_rank1"
-        ] = to_float(
-            row["rank_1"]
+        ] = float(
+            row[
+                "rank_1"
+            ]
         )
 
         model[
             f"{prefix}_rank5"
-        ] = to_float(
-            row["rank_5"]
+        ] = float(
+            row[
+                "rank_5"
+            ]
         )
 
         model[
             f"{prefix}_rank10"
-        ] = to_float(
-            row["rank_10"]
+        ] = float(
+            row[
+                "rank_10"
+            ]
         )
 
         model[
             f"{prefix}_map"
-        ] = to_float(
-            row["mAP"]
+        ] = float(
+            row[
+                "mAP"
+            ]
         )
 
         model[
             f"{prefix}_minp"
-        ] = to_float(
-            row["mINP"]
+        ] = float(
+            row[
+                "mINP"
+            ]
         )
 
     return models
 
 
 def load_efficiency() -> dict[str, dict]:
-    rows = read_csv(
-        EFFICIENCY_CSV
-    )
-
     result: dict[
         str,
         dict,
     ] = {}
 
-    for row in rows:
-        model_id = row[
-            "model_id"
-        ]
+    for row in read_csv(
+        EFFICIENCY_CSV
+    ):
+        model_id = (
+            row[
+                "model_id"
+            ]
+        )
 
         result[
             model_id
@@ -162,91 +175,67 @@ def load_efficiency() -> dict[str, dict]:
                 "backbone"
             ],
 
-            "input_height": to_int(
+            "input_height": int(
                 row[
                     "input_height"
                 ]
             ),
 
-            "input_width": to_int(
+            "input_width": int(
                 row[
                     "input_width"
                 ]
             ),
 
-            "embedding_dim": to_int(
+            "embedding_dim": int(
                 row[
                     "embedding_dim"
                 ]
             ),
 
-            "parameters": to_int(
-                row[
-                    "parameters"
-                ]
-            ),
-
-            "parameters_m": to_float(
+            "parameters_m": float(
                 row[
                     "parameters_m"
                 ]
             ),
 
-            "checkpoint_mb": to_float(
+            "checkpoint_mb": float(
                 row[
                     "checkpoint_mb"
                 ]
             ),
 
-            "batch1_latency_ms": to_float(
+            "batch1_latency_ms": float(
                 row[
                     "batch1_latency_ms"
                 ]
             ),
 
-            "throughput_batch_size": to_int(
-                row[
-                    "throughput_batch_size"
-                ]
-            ),
-
-            "batch_latency_ms": to_float(
+            "batch_latency_ms": float(
                 row[
                     "batch_latency_ms"
                 ]
             ),
 
-            "throughput_images_per_second": to_float(
+            "throughput_images_per_second": float(
                 row[
                     "throughput_images_per_second"
                 ]
             ),
 
-            "tracklet_frames": to_int(
-                row[
-                    "tracklet_frames"
-                ]
-            ),
-
-            "tracklet_latency_ms": to_float(
+            "tracklet_latency_ms": float(
                 row[
                     "tracklet_latency_ms"
                 ]
             ),
 
-            "baseline_vram_mb": to_float(
-                row[
-                    "baseline_vram_mb"
-                ]
-            ),
-
-            "peak_vram_batch1_mb": to_float(
+            "peak_vram_batch1_mb": float(
                 row[
                     "peak_vram_batch1_mb"
                 ]
             ),
 
-            "peak_vram_batch_mb": to_float(
+            "peak_vram_batch_mb": float(
                 row[
                     "peak_vram_batch_mb"
                 ]
@@ -257,8 +246,13 @@ def load_efficiency() -> dict[str, dict]:
 
 
 def build_final_rows() -> list[dict]:
-    accuracy = load_accuracy()
-    efficiency = load_efficiency()
+    accuracy = (
+        load_accuracy()
+    )
+
+    efficiency = (
+        load_efficiency()
+    )
 
     accuracy_models = set(
         accuracy
@@ -272,30 +266,31 @@ def build_final_rows() -> list[dict]:
         accuracy_models
         != efficiency_models
     ):
-        missing_efficiency = (
+        accuracy_only = sorted(
             accuracy_models
             - efficiency_models
         )
 
-        missing_accuracy = (
+        efficiency_only = sorted(
             efficiency_models
             - accuracy_models
         )
 
         raise RuntimeError(
-            "Accuracy/Efficiency model mismatch.\n"
-            f"Missing efficiency: "
-            f"{sorted(missing_efficiency)}\n"
-            f"Missing accuracy: "
-            f"{sorted(missing_accuracy)}"
+            "Accuracy/Efficiency model "
+            "mismatch.\n"
+            f"Accuracy only: "
+            f"{accuracy_only}\n"
+            f"Efficiency only: "
+            f"{efficiency_only}"
         )
 
-    final_rows: list[
+    rows: list[
         dict
     ] = []
 
     for model_id in sorted(
-        accuracy_models
+        accuracy
     ):
         accuracy_row = (
             accuracy[
@@ -310,23 +305,35 @@ def build_final_rows() -> list[dict]:
         )
 
         if (
-            accuracy_row["family"]
-            != efficiency_row["family"]
+            accuracy_row[
+                "family"
+            ]
+            != efficiency_row[
+                "family"
+            ]
         ):
             raise RuntimeError(
-                f"Family mismatch for {model_id}"
+                "Family mismatch for "
+                f"{model_id}"
             )
 
         if (
-            accuracy_row["backbone"]
-            != efficiency_row["backbone"]
+            accuracy_row[
+                "backbone"
+            ]
+            != efficiency_row[
+                "backbone"
+            ]
         ):
             raise RuntimeError(
-                f"Backbone mismatch for {model_id}"
+                "Backbone mismatch for "
+                f"{model_id}"
             )
 
         row = {
-            "model_id": model_id,
+            "model_id": (
+                model_id
+            ),
 
             "family": (
                 accuracy_row[
@@ -340,9 +347,9 @@ def build_final_rows() -> list[dict]:
                 ]
             ),
 
-            # ---------------------------------
+            # ==================================
             # Model information
-            # ---------------------------------
+            # ==================================
 
             "input_height": (
                 efficiency_row[
@@ -376,9 +383,43 @@ def build_final_rows() -> list[dict]:
                 2,
             ),
 
-            # ---------------------------------
-            # Market1501
-            # ---------------------------------
+            # ==================================
+            # MSMT17_V2 — In-Domain
+            # ==================================
+
+            "msmt_rank1": (
+                accuracy_row[
+                    "msmt_rank1"
+                ]
+            ),
+
+            "msmt_rank5": (
+                accuracy_row[
+                    "msmt_rank5"
+                ]
+            ),
+
+            "msmt_rank10": (
+                accuracy_row[
+                    "msmt_rank10"
+                ]
+            ),
+
+            "msmt_map": (
+                accuracy_row[
+                    "msmt_map"
+                ]
+            ),
+
+            "msmt_minp": (
+                accuracy_row[
+                    "msmt_minp"
+                ]
+            ),
+
+            # ==================================
+            # Market1501 — Cross-Domain
+            # ==================================
 
             "market_rank1": (
                 accuracy_row[
@@ -410,9 +451,9 @@ def build_final_rows() -> list[dict]:
                 ]
             ),
 
-            # ---------------------------------
-            # MARS
-            # ---------------------------------
+            # ==================================
+            # MARS — Cross-Domain
+            # ==================================
 
             "mars_rank1": (
                 accuracy_row[
@@ -444,9 +485,9 @@ def build_final_rows() -> list[dict]:
                 ]
             ),
 
-            # ---------------------------------
+            # ==================================
             # Efficiency
-            # ---------------------------------
+            # ==================================
 
             "batch1_latency_ms": round(
                 efficiency_row[
@@ -491,26 +532,22 @@ def build_final_rows() -> list[dict]:
             ),
         }
 
-        final_rows.append(
+        rows.append(
             row
         )
 
-    return final_rows
+    return rows
 
 
 def write_csv(
     rows: list[dict],
 ) -> None:
-    if not rows:
-        raise RuntimeError(
-            "No final benchmark rows."
-        )
-
     with OUTPUT_CSV.open(
         "w",
         newline="",
         encoding="utf-8",
     ) as file:
+
         writer = csv.DictWriter(
             file,
             fieldnames=list(
@@ -531,13 +568,15 @@ def markdown_table(
     lines = [
         (
             "| Model | Family | Backbone | "
+            "MSMT R1 | MSMT mAP | "
             "Market R1 | Market mAP | "
             "MARS R1 | MARS mAP | "
             "Latency | Throughput | "
             "VRAM B16 | Params |"
         ),
         (
-            "|---|---|---|---:|---:|---:|---:|"
+            "|---|---|---|---:|---:|"
+            "---:|---:|---:|---:|"
             "---:|---:|---:|---:|"
         ),
     ]
@@ -548,6 +587,8 @@ def markdown_table(
             f"{row['model_id']} | "
             f"{row['family']} | "
             f"{row['backbone']} | "
+            f"{row['msmt_rank1']:.2f}% | "
+            f"{row['msmt_map']:.2f}% | "
             f"{row['market_rank1']:.2f}% | "
             f"{row['market_map']:.2f}% | "
             f"{row['mars_rank1']:.2f}% | "
@@ -566,7 +607,7 @@ def markdown_table(
 def write_markdown(
     rows: list[dict],
 ) -> None:
-    ranked_rows = sorted(
+    ordered = sorted(
         rows,
         key=lambda row: (
             row[
@@ -580,37 +621,44 @@ def write_markdown(
     )
 
     content = [
-        "# SHAWAF ReID Final Benchmark Summary",
+        (
+            "# SHAWAF ReID "
+            "Final Benchmark Summary"
+        ),
         "",
         (
-            "FastReID models trained on MSMT17 "
-            "and evaluated cross-domain on "
-            "Market1501 and MARS."
+            "FastReID models trained on "
+            "MSMT17_V2, evaluated in-domain "
+            "on MSMT17_V2 and cross-domain "
+            "on Market1501 and MARS."
         ),
         "",
         markdown_table(
-            ranked_rows
+            ordered
         ),
         "",
         "## Notes",
         "",
         (
+            "- MSMT17_V2 uses single-image "
+            "L2-normalized embeddings "
+            "(in-domain)."
+        ),
+        (
             "- Market1501 uses single-image "
-            "L2-normalized embeddings."
+            "L2-normalized embeddings "
+            "(cross-domain)."
         ),
         (
             "- MARS uses 8 uniformly sampled "
             "frames, raw-feature mean pooling, "
-            "then final L2 normalization."
+            "then final L2 normalization "
+            "(cross-domain)."
         ),
         (
-            "- Efficiency measurements were "
-            "performed on the same GPU and "
-            "with identical profiling settings."
-        ),
-        (
-            "- MSMT17_V2 in-domain evaluation "
-            "is pending a verified dataset copy."
+            "- Efficiency measurements are "
+            "unchanged and come from the same "
+            "GPU/profiling protocol used before."
         ),
         "",
     ]
@@ -619,6 +667,7 @@ def write_markdown(
         "w",
         encoding="utf-8",
     ) as file:
+
         file.write(
             "\n".join(
                 content
@@ -629,7 +678,7 @@ def write_markdown(
 def print_table(
     rows: list[dict],
 ) -> None:
-    rows = sorted(
+    ordered = sorted(
         rows,
         key=lambda row: (
             row[
@@ -643,12 +692,14 @@ def print_table(
     )
 
     print()
-    print("=" * 150)
+    print("=" * 170)
 
     print(
         f"{'Model':<18}"
         f"{'Family':<8}"
         f"{'Backbone':<12}"
+        f"{'MSMT R1':>10}"
+        f"{'MSMT mAP':>10}"
         f"{'Market R1':>11}"
         f"{'Market mAP':>12}"
         f"{'MARS R1':>10}"
@@ -659,13 +710,16 @@ def print_table(
         f"{'Params':>10}"
     )
 
-    print("-" * 150)
+    print("-" * 170)
 
-    for row in rows:
+    for row in ordered:
         print(
             f"{row['model_id']:<18}"
             f"{row['family']:<8}"
             f"{row['backbone']:<12}"
+
+            f"{row['msmt_rank1']:>9.2f}%"
+            f"{row['msmt_map']:>9.2f}%"
 
             f"{row['market_rank1']:>10.2f}%"
             f"{row['market_map']:>11.2f}%"
@@ -682,7 +736,7 @@ def print_table(
             f"{row['parameters_m']:>8.2f}M"
         )
 
-    print("=" * 150)
+    print("=" * 170)
 
 
 def main() -> None:
@@ -695,7 +749,9 @@ def main() -> None:
 
     print("=" * 88)
 
-    rows = build_final_rows()
+    rows = (
+        build_final_rows()
+    )
 
     if len(rows) != 12:
         raise RuntimeError(
@@ -716,8 +772,9 @@ def main() -> None:
     )
 
     print()
-    print("FINAL SUMMARY COMPLETE")
-    print("-" * 88)
+    print(
+        "FINAL SUMMARY COMPLETE"
+    )
 
     print(
         f"Models                  : "

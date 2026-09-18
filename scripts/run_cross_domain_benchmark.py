@@ -44,6 +44,7 @@ RESULT_ROOT = (
 
 
 DEFAULT_DATASETS = (
+    "msmt17",
     "market1501",
     "mars",
 )
@@ -65,7 +66,10 @@ def load_model_ids() -> list[str]:
 def protocol_for_dataset(
     dataset: str,
 ) -> str:
-    if dataset == "market1501":
+    if dataset in {
+        "msmt17",
+        "market1501",
+    }:
         return "single_image_l2"
 
     if dataset == "mars":
@@ -76,27 +80,41 @@ def protocol_for_dataset(
     )
 
 
+def evaluation_type(
+    dataset: str,
+) -> str:
+    if dataset == "msmt17":
+        return "in-domain"
+
+    return "cross-domain"
+
+
 def cache_complete(
     model_id: str,
     dataset: str,
 ) -> bool:
-    protocol = protocol_for_dataset(
-        dataset
-    )
-
     root = (
         EMBEDDING_ROOT
         / model_id
         / dataset
-        / protocol
+        / protocol_for_dataset(
+            dataset
+        )
     )
 
-    query = root / "query.npz"
-    gallery = root / "gallery.npz"
+    query_path = (
+        root
+        / "query.npz"
+    )
+
+    gallery_path = (
+        root
+        / "gallery.npz"
+    )
 
     return (
-        query.exists()
-        and gallery.exists()
+        query_path.exists()
+        and gallery_path.exists()
     )
 
 
@@ -104,15 +122,13 @@ def result_exists(
     model_id: str,
     dataset: str,
 ) -> bool:
-    protocol = protocol_for_dataset(
-        dataset
-    )
-
     path = (
         RESULT_ROOT
         / model_id
         / dataset
-        / protocol
+        / protocol_for_dataset(
+            dataset
+        )
         / "metrics.json"
     )
 
@@ -123,7 +139,12 @@ def run_command(
     command: list[str],
 ) -> None:
     print()
-    print("$ " + " ".join(command))
+    print(
+        "$ "
+        + " ".join(
+            command
+        )
+    )
     print()
 
     subprocess.run(
@@ -181,7 +202,9 @@ def format_seconds(
     seconds: float,
 ) -> str:
     total = int(
-        round(seconds)
+        round(
+            seconds
+        )
     )
 
     hours, remainder = divmod(
@@ -214,7 +237,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description=(
             "Run the SHAWAF FastReID "
-            "cross-domain benchmark."
+            "in-domain + cross-domain benchmark."
         )
     )
 
@@ -233,6 +256,7 @@ def main() -> None:
         "--datasets",
         nargs="*",
         choices=[
+            "msmt17",
             "market1501",
             "mars",
         ],
@@ -245,8 +269,8 @@ def main() -> None:
         "--force-cache",
         action="store_true",
         help=(
-            "Rebuild caches even if both "
-            "query and gallery files exist."
+            "Rebuild query/gallery caches "
+            "even if they already exist."
         ),
     )
 
@@ -275,12 +299,19 @@ def main() -> None:
         if unknown:
             raise ValueError(
                 "Unknown model IDs: "
-                + ", ".join(unknown)
+                + ", ".join(
+                    unknown
+                )
             )
 
-        model_ids = args.models
+        model_ids = (
+            args.models
+        )
+
     else:
-        model_ids = registry_models
+        model_ids = (
+            registry_models
+        )
 
     datasets = tuple(
         args.datasets
@@ -292,15 +323,14 @@ def main() -> None:
     )
 
     print("=" * 88)
+
     print(
         "SHAWAF ReID - "
-        "Cross-Domain Benchmark Runner"
+        "In-Domain + Cross-Domain "
+        "Benchmark Runner"
     )
-    print("=" * 88)
 
-    print()
-    print("PLAN")
-    print("-" * 88)
+    print("=" * 88)
 
     print(
         f"Models                  : "
@@ -317,18 +347,6 @@ def main() -> None:
         f"{total_jobs}"
     )
 
-    print()
-    print("MODELS")
-    print("-" * 88)
-
-    for index, model_id in enumerate(
-        model_ids,
-        start=1,
-    ):
-        print(
-            f"{index:02d}. {model_id}"
-        )
-
     completed_jobs = 0
     skipped_caches = 0
     skipped_results = 0
@@ -337,25 +355,22 @@ def main() -> None:
         time.perf_counter()
     )
 
-    for model_index, model_id in enumerate(
-        model_ids,
-        start=1,
-    ):
-        for dataset_index, dataset in enumerate(
-            datasets,
-            start=1,
-        ):
+    for model_id in model_ids:
+        for dataset in datasets:
             job_number = (
-                (model_index - 1)
-                * len(datasets)
-                + dataset_index
+                completed_jobs
+                + 1
             )
 
             print()
             print("=" * 88)
+
             print(
-                f"JOB {job_number}/{total_jobs}"
+                f"JOB "
+                f"{job_number}/"
+                f"{total_jobs}"
             )
+
             print("=" * 88)
 
             print(
@@ -368,24 +383,35 @@ def main() -> None:
                 f"{dataset}"
             )
 
+            print(
+                f"Evaluation type         : "
+                f"{evaluation_type(dataset)}"
+            )
+
+            print(
+                f"Protocol                : "
+                f"{protocol_for_dataset(dataset)}"
+            )
+
             job_start = (
                 time.perf_counter()
             )
 
-            # ------------------------------------------
+            # ==========================================
             # Embedding cache
-            # ------------------------------------------
+            # ==========================================
 
-            has_cache = cache_complete(
-                model_id,
-                dataset,
+            has_cache = (
+                cache_complete(
+                    model_id,
+                    dataset,
+                )
             )
 
             if (
                 has_cache
                 and not args.force_cache
             ):
-                print()
                 print(
                     "Embedding cache         : "
                     "EXISTS -> SKIP"
@@ -394,7 +420,6 @@ def main() -> None:
                 skipped_caches += 1
 
             else:
-                print()
                 print(
                     "Embedding cache         : "
                     "BUILD"
@@ -418,20 +443,21 @@ def main() -> None:
                         "files are incomplete."
                     )
 
-            # ------------------------------------------
+            # ==========================================
             # Evaluation
-            # ------------------------------------------
+            # ==========================================
 
-            has_result = result_exists(
-                model_id,
-                dataset,
+            has_result = (
+                result_exists(
+                    model_id,
+                    dataset,
+                )
             )
 
             if (
                 has_result
                 and not args.force_evaluation
             ):
-                print()
                 print(
                     "Evaluation result       : "
                     "EXISTS -> SKIP"
@@ -440,7 +466,6 @@ def main() -> None:
                 skipped_results += 1
 
             else:
-                print()
                 print(
                     "Evaluation result       : "
                     "RUN"
@@ -467,7 +492,6 @@ def main() -> None:
                 - job_start
             )
 
-            print()
             print(
                 f"Job elapsed             : "
                 f"{format_seconds(job_elapsed)}"
@@ -475,7 +499,8 @@ def main() -> None:
 
             print(
                 f"Progress                : "
-                f"{completed_jobs}/{total_jobs}"
+                f"{completed_jobs}/"
+                f"{total_jobs}"
             )
 
     total_elapsed = (
@@ -485,12 +510,13 @@ def main() -> None:
 
     print()
     print("=" * 88)
-    print("CROSS-DOMAIN BENCHMARK COMPLETE")
+    print("BENCHMARK COMPLETE")
     print("=" * 88)
 
     print(
         f"Jobs processed          : "
-        f"{completed_jobs}/{total_jobs}"
+        f"{completed_jobs}/"
+        f"{total_jobs}"
     )
 
     print(
@@ -508,7 +534,6 @@ def main() -> None:
         f"{format_seconds(total_elapsed)}"
     )
 
-    print()
     print(
         f"Embeddings root         : "
         f"{EMBEDDING_ROOT}"

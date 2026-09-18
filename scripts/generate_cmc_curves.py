@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import csv
+import json
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-import torch
 import yaml
 
 
@@ -16,12 +16,6 @@ REGISTRY_PATH = (
     / "configs"
     / "benchmark"
     / "fastreid_msmt17_models.yaml"
-)
-
-EMBEDDING_ROOT = (
-    PROJECT_ROOT
-    / "benchmarks"
-    / "embeddings"
 )
 
 RESULT_ROOT = (
@@ -43,308 +37,308 @@ CMC_RESULT_ROOT = (
 
 
 DATASETS = (
+    "msmt17",
     "market1501",
     "mars",
 )
 
 
 PROTOCOLS = {
+    "msmt17": "single_image_l2",
     "market1501": "single_image_l2",
     "mars": "uniform8_mean_raw_l2",
 }
 
 
 DISPLAY_NAMES = {
+    "msmt17": "MSMT17_V2",
     "market1501": "Market1501",
     "mars": "MARS",
 }
 
 
+EVALUATION_TYPES = {
+    "msmt17": "In-Domain",
+    "market1501": "Cross-Domain",
+    "mars": "Cross-Domain Tracklet",
+}
+
+
 def load_model_ids() -> list[str]:
+    """
+    Load all FastReID benchmark model IDs
+    from the central model registry.
+    """
+
+    if not REGISTRY_PATH.exists():
+        raise FileNotFoundError(
+            "Model registry not found:\n"
+            f"{REGISTRY_PATH}"
+        )
+
     with REGISTRY_PATH.open(
         "r",
         encoding="utf-8",
     ) as file:
-        registry = yaml.safe_load(file)
+        registry = yaml.safe_load(
+            file
+        )
 
-    return [
+    models = registry.get(
+        "models",
+        []
+    )
+
+    if not models:
+        raise RuntimeError(
+            "Model registry contains no models."
+        )
+
+    model_ids = [
         model["id"]
-        for model in registry["models"]
+        for model in models
     ]
 
+    return model_ids
 
-def cache_path(
+
+def metrics_path(
+    *,
     model_id: str,
     dataset: str,
-    split: str,
 ) -> Path:
+    """
+    Return the existing metrics.json path.
+
+    Example:
+
+        benchmarks/results/
+            sbs_r50/
+                msmt17/
+                    single_image_l2/
+                        metrics.json
+    """
+
+    protocol = (
+        PROTOCOLS[
+            dataset
+        ]
+    )
+
     return (
-        EMBEDDING_ROOT
+        RESULT_ROOT
         / model_id
         / dataset
-        / PROTOCOLS[dataset]
-        / f"{split}.npz"
+        / protocol
+        / "metrics.json"
     )
 
 
-def find_array(
-    data: np.lib.npyio.NpzFile,
-    names: tuple[str, ...],
-) -> np.ndarray:
-    for name in names:
-        if name in data.files:
-            return np.asarray(
-                data[name]
-            )
+def load_metrics(
+    *,
+    model_id: str,
+    dataset: str,
+) -> dict:
+    """
+    Load one benchmark metrics.json file
+    and validate its identity/protocol.
+    """
 
-    raise KeyError(
-        "Could not find any of these keys:\n"
-        f"{names}\n"
-        f"Available keys: {data.files}"
+    path = metrics_path(
+        model_id=model_id,
+        dataset=dataset,
     )
 
-
-def load_cache(
-    path: Path,
-) -> tuple[
-    np.ndarray,
-    np.ndarray,
-    np.ndarray,
-]:
     if not path.exists():
         raise FileNotFoundError(
-            f"Cache not found:\n{path}"
+            "Benchmark metrics file not found:\n"
+            f"{path}"
         )
 
-    with np.load(
-        path,
-        allow_pickle=False,
-    ) as data:
-
-        embeddings = find_array(
-            data,
-            (
-                "embeddings",
-                "features",
-            ),
-        ).astype(
-            np.float32,
-            copy=False,
+    with path.open(
+        "r",
+        encoding="utf-8",
+    ) as file:
+        metrics = json.load(
+            file
         )
-
-        person_ids = find_array(
-            data,
-            (
-                "person_ids",
-                "pids",
-                "person_id",
-            ),
-        ).astype(
-            np.int64,
-            copy=False,
-        )
-
-        camera_ids = find_array(
-            data,
-            (
-                "camera_ids",
-                "camids",
-                "camera_id",
-            ),
-        ).astype(
-            np.int64,
-            copy=False,
-        )
-
-    if embeddings.ndim != 2:
-        raise RuntimeError(
-            f"Embeddings must be 2D: {path}"
-        )
-
-    count = embeddings.shape[0]
 
     if (
-        len(person_ids) != count
-        or len(camera_ids) != count
+        metrics.get(
+            "model_id"
+        )
+        != model_id
     ):
         raise RuntimeError(
-            f"Metadata length mismatch: {path}"
+            "Model mismatch in metrics file:\n"
+            f"{path}"
         )
 
-    return (
-        embeddings,
-        person_ids,
-        camera_ids,
+    if (
+        metrics.get(
+            "dataset"
+        )
+        != dataset
+    ):
+        raise RuntimeError(
+            "Dataset mismatch in metrics file:\n"
+            f"{path}"
+        )
+
+    expected_protocol = (
+        PROTOCOLS[
+            dataset
+        ]
     )
 
+    if (
+        metrics.get(
+            "protocol"
+        )
+        != expected_protocol
+    ):
+        raise RuntimeError(
+            "Protocol mismatch in metrics file:\n"
+            f"{path}\n"
+            f"Expected: {expected_protocol}\n"
+            f"Found   : "
+            f"{metrics.get('protocol')}"
+        )
 
-def compute_cmc(
+    if "cmc" not in metrics:
+        raise RuntimeError(
+            "CMC data is missing from:\n"
+            f"{path}"
+        )
+
+    return metrics
+
+
+def validate_cmc(
     *,
-    query_embeddings: np.ndarray,
-    query_pids: np.ndarray,
-    query_camids: np.ndarray,
-    gallery_embeddings: np.ndarray,
-    gallery_pids: np.ndarray,
-    gallery_camids: np.ndarray,
-    max_rank: int,
-    query_batch_size: int,
-    device: str,
-) -> tuple[
-    np.ndarray,
-    int,
-    int,
-]:
+    model_id: str,
+    dataset: str,
+    metrics: dict,
+) -> np.ndarray:
     """
-    Standard ReID CMC evaluation.
+    Validate the CMC array stored during
+    the original benchmark evaluation.
 
-    For every query:
-      1. Rank gallery by cosine similarity.
-      2. Remove same-PID + same-camera samples.
-      3. Skip query if no valid positive remains.
-      4. Accumulate CMC up to max_rank.
+    We also verify Rank-1, Rank-5 and Rank-10
+    against the scalar values in metrics.json.
 
-    Embeddings are already L2 normalized,
-    so dot product == cosine similarity.
+    This protects the reporting stage from
+    accidentally plotting inconsistent data.
     """
 
-    gallery_tensor = torch.from_numpy(
-        gallery_embeddings
-    ).to(
-        device=device,
-        dtype=torch.float32,
-    )
-
-    cmc_sum = np.zeros(
-        max_rank,
+    cmc = np.asarray(
+        metrics["cmc"],
         dtype=np.float64,
     )
 
-    valid_queries = 0
-    skipped_queries = 0
-
-    total_queries = len(
-        query_embeddings
-    )
-
-    for start in range(
-        0,
-        total_queries,
-        query_batch_size,
-    ):
-        end = min(
-            start + query_batch_size,
-            total_queries,
-        )
-
-        query_tensor = torch.from_numpy(
-            query_embeddings[start:end]
-        ).to(
-            device=device,
-            dtype=torch.float32,
-        )
-
-        with torch.inference_mode():
-            similarities = (
-                query_tensor
-                @ gallery_tensor.T
-            )
-
-            rankings = torch.argsort(
-                similarities,
-                dim=1,
-                descending=True,
-            )
-
-        rankings = rankings.cpu().numpy()
-
-        for local_index, ranked_indices in enumerate(
-            rankings
-        ):
-            query_index = (
-                start
-                + local_index
-            )
-
-            q_pid = query_pids[
-                query_index
-            ]
-
-            q_camid = query_camids[
-                query_index
-            ]
-
-            ranked_pids = gallery_pids[
-                ranked_indices
-            ]
-
-            ranked_camids = gallery_camids[
-                ranked_indices
-            ]
-
-            # Standard ReID exclusion:
-            # same person + same camera.
-            remove = (
-                (ranked_pids == q_pid)
-                & (ranked_camids == q_camid)
-            )
-
-            keep = ~remove
-
-            matches = (
-                ranked_pids[keep]
-                == q_pid
-            ).astype(
-                np.int32
-            )
-
-            if not np.any(matches):
-                skipped_queries += 1
-                continue
-
-            valid_queries += 1
-
-            cmc = np.cumsum(
-                matches
-            )
-
-            cmc[cmc > 1] = 1
-
-            if len(cmc) >= max_rank:
-                cmc_rank = cmc[
-                    :max_rank
-                ]
-
-            else:
-                cmc_rank = np.empty(
-                    max_rank,
-                    dtype=np.float64,
-                )
-
-                cmc_rank[
-                    :len(cmc)
-                ] = cmc
-
-                cmc_rank[
-                    len(cmc):
-                ] = cmc[-1]
-
-            cmc_sum += cmc_rank
-
-    if valid_queries == 0:
+    if cmc.ndim != 1:
         raise RuntimeError(
-            "No valid queries were found."
+            "CMC must be a 1D array.\n"
+            f"Model   : {model_id}\n"
+            f"Dataset : {dataset}"
         )
 
-    final_cmc = (
-        cmc_sum
-        / valid_queries
+    if len(cmc) < 10:
+        raise RuntimeError(
+            "CMC must contain at least "
+            "10 ranks.\n"
+            f"Model   : {model_id}\n"
+            f"Dataset : {dataset}\n"
+            f"Length  : {len(cmc)}"
+        )
+
+    if not np.all(
+        np.isfinite(
+            cmc
+        )
+    ):
+        raise RuntimeError(
+            "CMC contains non-finite values.\n"
+            f"Model   : {model_id}\n"
+            f"Dataset : {dataset}"
+        )
+
+    if np.any(
+        cmc < 0.0
+    ) or np.any(
+        cmc > 1.0
+    ):
+        raise RuntimeError(
+            "CMC values must be between "
+            "0 and 1.\n"
+            f"Model   : {model_id}\n"
+            f"Dataset : {dataset}"
+        )
+
+    # --------------------------------------------------
+    # A valid CMC should never decrease as rank grows.
+    # --------------------------------------------------
+
+    if np.any(
+        np.diff(
+            cmc
+        )
+        < -1e-12
+    ):
+        raise RuntimeError(
+            "CMC curve is not monotonic.\n"
+            f"Model   : {model_id}\n"
+            f"Dataset : {dataset}"
+        )
+
+    checks = (
+        (
+            1,
+            "rank_1",
+        ),
+        (
+            5,
+            "rank_5",
+        ),
+        (
+            10,
+            "rank_10",
+        ),
     )
 
-    return (
-        final_cmc,
-        valid_queries,
-        skipped_queries,
-    )
+    for (
+        rank,
+        field,
+    ) in checks:
+
+        stored_value = float(
+            metrics[
+                field
+            ]
+        )
+
+        cmc_value = float(
+            cmc[
+                rank - 1
+            ]
+        )
+
+        if not np.isclose(
+            stored_value,
+            cmc_value,
+            rtol=0.0,
+            atol=1e-10,
+        ):
+            raise RuntimeError(
+                "CMC/scalar metric mismatch.\n"
+                f"Model   : {model_id}\n"
+                f"Dataset : {dataset}\n"
+                f"Metric  : {field}\n"
+                f"Scalar  : {stored_value}\n"
+                f"CMC     : {cmc_value}"
+            )
+
+    return cmc
 
 
 def save_cmc_csv(
@@ -353,6 +347,16 @@ def save_cmc_csv(
     dataset: str,
     cmc: np.ndarray,
 ) -> Path:
+    """
+    Save one model/dataset CMC curve as CSV.
+
+    Output:
+
+        benchmarks/results/cmc/
+            <model_id>/
+                <dataset>.csv
+    """
+
     output_dir = (
         CMC_RESULT_ROOT
         / model_id
@@ -373,6 +377,7 @@ def save_cmc_csv(
         newline="",
         encoding="utf-8",
     ) as file:
+
         writer = csv.writer(
             file
         )
@@ -385,15 +390,23 @@ def save_cmc_csv(
             ]
         )
 
-        for rank, value in enumerate(
+        for (
+            rank,
+            value,
+        ) in enumerate(
             cmc,
             start=1,
         ):
             writer.writerow(
                 [
                     rank,
-                    float(value),
-                    float(value * 100.0),
+                    float(
+                        value
+                    ),
+                    float(
+                        value
+                        * 100.0
+                    ),
                 ]
             )
 
@@ -403,24 +416,58 @@ def save_cmc_csv(
 def plot_dataset_cmc(
     *,
     dataset: str,
-    curves: dict[str, np.ndarray],
+    curves: dict[
+        str,
+        np.ndarray,
+    ],
 ) -> Path:
+    """
+    Plot all 12 models on one CMC figure
+    for a single dataset.
+    """
+
+    if not curves:
+        raise RuntimeError(
+            f"No CMC curves for {dataset}."
+        )
+
     FIGURES_ROOT.mkdir(
         parents=True,
         exist_ok=True,
     )
 
-    plt.figure(
-        figsize=(12, 8)
+    fig, ax = plt.subplots(
+        figsize=(
+            12,
+            8,
+        )
     )
 
-    for model_id, cmc in curves.items():
+    # --------------------------------------------------
+    # Plot models ordered by Rank-1.
+    #
+    # This also makes the legend easier to interpret.
+    # --------------------------------------------------
+
+    ordered_curves = sorted(
+        curves.items(),
+        key=lambda item: (
+            item[1][0]
+        ),
+        reverse=True,
+    )
+
+    for (
+        model_id,
+        cmc,
+    ) in ordered_curves:
+
         ranks = np.arange(
             1,
             len(cmc) + 1,
         )
 
-        plt.plot(
+        ax.plot(
             ranks,
             cmc * 100.0,
             linewidth=1.8,
@@ -433,82 +480,159 @@ def plot_dataset_cmc(
         ]
     )
 
-    plt.title(
-        f"{dataset_name} Cross-Domain CMC Curves",
+    evaluation_type = (
+        EVALUATION_TYPES[
+            dataset
+        ]
+    )
+
+    ax.set_title(
+        (
+            f"{dataset_name} "
+            f"{evaluation_type} CMC Curves"
+        ),
         fontsize=15,
         pad=14,
     )
 
-    plt.xlabel(
+    ax.set_xlabel(
         "Rank"
     )
 
-    plt.ylabel(
-        "Matching rate (%)"
+    ax.set_ylabel(
+        "Matching Rate (%)"
     )
 
-    plt.xlim(
+    max_rank = max(
+        len(cmc)
+        for cmc in curves.values()
+    )
+
+    ax.set_xlim(
         1,
-        max(
-            len(cmc)
-            for cmc in curves.values()
-        ),
+        max_rank,
     )
 
-    plt.ylim(
+    ax.set_ylim(
         0,
         100,
     )
 
-    plt.grid(
-        alpha=0.25
+    ax.set_xticks(
+        [
+            1,
+            5,
+            10,
+            20,
+            30,
+            40,
+            50,
+        ]
     )
 
-    plt.legend(
+    ax.grid(
+        alpha=0.25,
+    )
+
+    ax.legend(
         fontsize=8,
         ncol=2,
+        title="Model",
     )
 
-    plt.tight_layout()
+    fig.tight_layout()
 
     path = (
         FIGURES_ROOT
         / f"{dataset}_cmc.png"
     )
 
-    plt.savefig(
+    fig.savefig(
         path,
         dpi=220,
         bbox_inches="tight",
     )
 
-    plt.close()
+    plt.close(
+        fig
+    )
 
     return path
 
 
-def main() -> None:
-    max_rank = 50
-    query_batch_size = 128
+def print_rank_summary(
+    *,
+    dataset: str,
+    curves: dict[
+        str,
+        np.ndarray,
+    ],
+) -> None:
+    """
+    Print a compact CMC summary for sanity checking.
+    """
 
-    device = (
-        "cuda"
-        if torch.cuda.is_available()
-        else "cpu"
+    ordered = sorted(
+        curves.items(),
+        key=lambda item: (
+            item[1][0]
+        ),
+        reverse=True,
     )
 
+    print()
+    print(
+        f"{DISPLAY_NAMES[dataset]} "
+        f"CMC SUMMARY"
+    )
+
+    print("-" * 88)
+
+    print(
+        f"{'Model':<20}"
+        f"{'Rank-1':>12}"
+        f"{'Rank-5':>12}"
+        f"{'Rank-10':>12}"
+        f"{'Rank-50':>12}"
+    )
+
+    print("-" * 88)
+
+    for (
+        model_id,
+        cmc,
+    ) in ordered:
+
+        rank_50_index = min(
+            49,
+            len(cmc) - 1,
+        )
+
+        print(
+            f"{model_id:<20}"
+            f"{cmc[0] * 100:>11.2f}%"
+            f"{cmc[4] * 100:>11.2f}%"
+            f"{cmc[9] * 100:>11.2f}%"
+            f"{cmc[rank_50_index] * 100:>11.2f}%"
+        )
+
+
+def main() -> None:
     model_ids = (
         load_model_ids()
     )
 
     print("=" * 100)
+
     print(
         "SHAWAF ReID - "
-        "Full CMC Curve Generator"
+        "Final CMC Curve Generator"
     )
+
     print("=" * 100)
 
     print()
+
     print(
         f"Models                  : "
         f"{len(model_ids)}"
@@ -520,23 +644,31 @@ def main() -> None:
     )
 
     print(
-        f"Maximum rank            : "
-        f"{max_rank}"
+        f"Expected CMC results    : "
+        f"{len(model_ids) * len(DATASETS)}"
     )
 
     print(
-        f"Query batch size        : "
-        f"{query_batch_size}"
+        "Source                  : "
+        "existing metrics.json files"
     )
 
     print(
-        f"Device                  : "
-        f"{device}"
+        "Model inference         : "
+        "not required"
+    )
+
+    print(
+        "Embedding evaluation    : "
+        "not repeated"
     )
 
     all_curves: dict[
         str,
-        dict[str, np.ndarray],
+        dict[
+            str,
+            np.ndarray,
+        ],
     ] = {
         dataset: {}
         for dataset in DATASETS
@@ -547,80 +679,38 @@ def main() -> None:
         * len(DATASETS)
     )
 
-    job = 0
+    job_number = 0
 
-    for model_id in model_ids:
-        for dataset in DATASETS:
-            job += 1
+    for dataset in DATASETS:
+        print()
+        print("=" * 100)
 
-            print()
-            print("=" * 100)
+        print(
+            f"{DISPLAY_NAMES[dataset]} "
+            f"({EVALUATION_TYPES[dataset]})"
+        )
 
-            print(
-                f"[{job:02d}/{total_jobs:02d}] "
-                f"{model_id} / {dataset}"
-            )
+        print("=" * 100)
 
-            print("=" * 100)
-
-            query_path = cache_path(
-                model_id,
-                dataset,
-                "query",
-            )
-
-            gallery_path = cache_path(
-                model_id,
-                dataset,
-                "gallery",
-            )
-
-            (
-                query_embeddings,
-                query_pids,
-                query_camids,
-            ) = load_cache(
-                query_path
-            )
-
-            (
-                gallery_embeddings,
-                gallery_pids,
-                gallery_camids,
-            ) = load_cache(
-                gallery_path
-            )
+        for model_id in model_ids:
+            job_number += 1
 
             print(
-                f"Query embeddings        : "
-                f"{query_embeddings.shape}"
+                f"[{job_number:02d}/{total_jobs:02d}] "
+                f"{model_id:<18} "
+                f"{dataset:<12}",
+                end="",
             )
 
-            print(
-                f"Gallery embeddings      : "
-                f"{gallery_embeddings.shape}"
-            )
-
-            (
-                cmc,
-                valid_queries,
-                skipped_queries,
-            ) = compute_cmc(
-                query_embeddings=query_embeddings,
-                query_pids=query_pids,
-                query_camids=query_camids,
-                gallery_embeddings=gallery_embeddings,
-                gallery_pids=gallery_pids,
-                gallery_camids=gallery_camids,
-                max_rank=max_rank,
-                query_batch_size=query_batch_size,
-                device=device,
-            )
-
-            output_csv = save_cmc_csv(
+            metrics = load_metrics(
                 model_id=model_id,
                 dataset=dataset,
-                cmc=cmc,
+            )
+
+            cmc = validate_cmc(
+                model_id=model_id,
+                dataset=dataset,
+                metrics=metrics,
             )
 
             all_curves[
@@ -629,62 +719,57 @@ def main() -> None:
                 model_id
             ] = cmc
 
-            print(
-                f"Valid queries           : "
-                f"{valid_queries:,}"
+            output_csv = save_cmc_csv(
+                model_id=model_id,
+                dataset=dataset,
+                cmc=cmc,
             )
 
             print(
-                f"Skipped queries         : "
-                f"{skipped_queries:,}"
+                "  OK"
             )
 
-            print(
-                f"Rank-1                  : "
-                f"{cmc[0] * 100:.2f}%"
-            )
-
-            print(
-                f"Rank-5                  : "
-                f"{cmc[4] * 100:.2f}%"
-            )
-
-            print(
-                f"Rank-10                 : "
-                f"{cmc[9] * 100:.2f}%"
-            )
-
-            print(
-                f"Rank-20                 : "
-                f"{cmc[19] * 100:.2f}%"
-            )
-
-            print(
-                f"Rank-50                 : "
-                f"{cmc[49] * 100:.2f}%"
-            )
-
-            print(
-                f"Saved                   : "
-                f"{output_csv}"
-            )
+            if not output_csv.exists():
+                raise RuntimeError(
+                    "CMC CSV was not created:\n"
+                    f"{output_csv}"
+                )
 
     print()
     print("=" * 100)
     print("GENERATING CMC FIGURES")
     print("=" * 100)
 
+    generated_figures: list[
+        Path
+    ] = []
+
     for dataset in DATASETS:
-        path = plot_dataset_cmc(
+        print_rank_summary(
             dataset=dataset,
             curves=all_curves[
                 dataset
             ],
         )
 
+        figure_path = (
+            plot_dataset_cmc(
+                dataset=dataset,
+                curves=all_curves[
+                    dataset
+                ],
+            )
+        )
+
+        generated_figures.append(
+            figure_path
+        )
+
+        print()
+
         print(
-            f"Saved                   : "
-            f"{path}"
+            f"Saved figure            : "
+            f"{figure_path}"
         )
 
     print()
@@ -693,14 +778,45 @@ def main() -> None:
     print("=" * 100)
 
     print(
-        f"CMC result root         : "
+        f"Models                  : "
+        f"{len(model_ids)}"
+    )
+
+    print(
+        f"Datasets                : "
+        f"{len(DATASETS)}"
+    )
+
+    print(
+        f"CMC CSV files           : "
+        f"{total_jobs}"
+    )
+
+    print(
+        f"CMC figures             : "
+        f"{len(generated_figures)}"
+    )
+
+    print(
+        f"CSV root                : "
         f"{CMC_RESULT_ROOT}"
     )
 
     print(
-        f"Figures root            : "
+        f"Figure root             : "
         f"{FIGURES_ROOT}"
     )
+
+    print()
+
+    print(
+        "Generated figures:"
+    )
+
+    for path in generated_figures:
+        print(
+            f"  - {path.name}"
+        )
 
 
 if __name__ == "__main__":

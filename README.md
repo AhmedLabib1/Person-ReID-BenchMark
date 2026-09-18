@@ -1,234 +1,249 @@
 # SHAWAF Person Re-Identification Benchmark
 
-Benchmarking framework for the **Person Re-Identification (ReID)** component of the SHAWAF graduation project.
+A benchmarking framework for evaluating **Person Re-Identification (ReID)** models for the SHAWAF video-search system.
 
-SHAWAF is an intelligent CCTV video-search system. The ReID module receives person tracklets from the Detection + Tracking pipeline, extracts appearance embeddings, and matches the same person across different cameras.
+The project compares pretrained FastReID models across multiple datasets to study:
 
-This repository currently benchmarks **12 FastReID configurations** on **Market1501** and **MARS**, measuring both retrieval accuracy and inference efficiency.
+- ReID accuracy
+- Cross-domain generalization
+- Image-based vs tracklet-based retrieval
+- Inference latency
+- Throughput
+- GPU memory usage
+- Model complexity
+
+The benchmark evaluates **12 FastReID models trained on MSMT17_V2**.
 
 ---
 
-## Benchmark Objective
+## Benchmark Overview
 
-The goal is not only to find the model with the highest accuracy.
+Three datasets are used:
 
-For SHAWAF, the selected ReID model should provide a good balance between:
+| Dataset | Evaluation | Retrieval Unit |
+|---|---|---|
+| **MSMT17_V2** | In-Domain | Image |
+| **Market1501** | Cross-Domain | Image |
+| **MARS** | Cross-Domain | Tracklet |
 
-- retrieval accuracy,
-- cross-domain generalization,
-- inference latency,
-- throughput,
-- GPU memory usage,
-- model complexity.
-
-So the benchmark evaluates:
+Since all model checkpoints were trained on MSMT17_V2:
 
 ```text
-Accuracy + Efficiency
+MSMT17_V2
+    |
+    | In-Domain
+    v
+Model Performance
+
+MSMT17_V2-trained model
+    |
+    +----> Market1501
+    |      Cross-Domain Image ReID
+    |
+    +----> MARS
+           Cross-Domain Tracklet ReID
 ```
 
-and uses both when selecting the final deployment candidate.
+This allows the benchmark to measure both performance inside the training domain and generalization to different ReID environments.
 
 ---
 
 ## Evaluated Models
 
-The benchmark covers three FastReID recipe families:
+Three FastReID recipe families are evaluated:
 
-- **BoT**
-- **AGW**
-- **SBS**
+```text
+BoT
+AGW
+SBS
+```
 
 Each family is tested with four backbone variants:
 
-| Family | Backbones                   |
-| ------ | --------------------------- |
-| BoT    | R50, R50-IBN, S50, R101-IBN |
-| AGW    | R50, R50-IBN, S50, R101-IBN |
-| SBS    | R50, R50-IBN, S50, R101-IBN |
-
-Total:
-
 ```text
-3 families × 4 backbones = 12 models
+R50
+R50-IBN
+S50
+R101-IBN
 ```
 
-All evaluated checkpoints are MSMT17-trained FastReID checkpoints.
+Giving a total of:
+
+```text
+3 families x 4 backbones = 12 models
+```
+
+Model IDs:
+
+```text
+bot_r50
+bot_r50_ibn
+bot_s50
+bot_r101_ibn
+
+agw_r50
+agw_r50_ibn
+agw_s50
+agw_r101_ibn
+
+sbs_r50
+sbs_r50_ibn
+sbs_s50
+sbs_r101_ibn
+```
 
 ---
 
-## Datasets
+# Evaluation Protocol
 
-### Market1501
+## Image-Based ReID
 
-Market1501 is evaluated using standard single-image ReID.
+Used for:
 
-Validated benchmark splits:
+```text
+MSMT17_V2
+Market1501
+```
 
-| Split   | Samples |
-| ------- | ------: |
-| Train   |  12,936 |
-| Query   |   3,368 |
-| Gallery |  15,913 |
-
-Protocol:
+Pipeline:
 
 ```text
 Image
-  ↓
-FastReID model
-  ↓
-2048-D embedding
-  ↓
-L2 normalization
-  ↓
-Cosine similarity
-  ↓
-Gallery ranking
+  |
+  v
+FastReID Encoder
+  |
+  v
+2048-D Feature
+  |
+  v
+L2 Normalization
+  |
+  v
+Cosine Similarity
+  |
+  v
+Gallery Ranking
+  |
+  v
+Rank / mAP / mINP / CMC
 ```
 
-Cache protocol name:
+Protocol name:
 
 ```text
 single_image_l2
 ```
 
-### MARS
+---
 
-MARS is a video-based person ReID dataset containing person tracklets.
+## Tracklet-Based ReID
 
-Validated benchmark splits:
+MARS contains person tracklets instead of individual images.
 
-| Split   | Tracklets |
-| ------- | --------: |
-| Train   |     8,298 |
-| Query   |     1,980 |
-| Gallery |     9,330 |
-
-To evaluate image-based FastReID models on MARS, SHAWAF uses a fixed tracklet protocol:
+The benchmark represents every tracklet using 8 uniformly sampled frames:
 
 ```text
 Tracklet
-  ↓
-Uniformly sample 8 frames
-  ↓
-Extract raw embedding for each frame
-  ↓
-Mean pooling
-  ↓
-Final L2 normalization
-  ↓
-Tracklet embedding
-  ↓
-Cosine similarity retrieval
+   |
+   v
+Uniformly Sample 8 Frames
+   |
+   v
+FastReID Encoder
+   |
+   v
+Raw Frame Features
+   |
+   v
+Mean Pooling
+   |
+   v
+L2 Normalization
+   |
+   v
+Tracklet Embedding
+   |
+   v
+Cosine Retrieval
 ```
 
-The 8 frames are sampled uniformly across the tracklet.
-
-For example, a 40-frame tracklet produces approximately:
-
-```text
-1, 7, 12, 18, 23, 29, 34, 40
-```
-
-Cache protocol name:
+Protocol name:
 
 ```text
 uniform8_mean_raw_l2
 ```
 
-This is the **SHAWAF benchmark protocol for applying image-based ReID models to MARS tracklets**.
+Frame features are kept raw before aggregation:
+
+```text
+Raw Frame Embeddings
+        |
+        v
+      Mean
+        |
+        v
+Final L2 Normalization
+```
 
 ---
 
-## Benchmark Pipeline
+# Metrics
+
+The benchmark evaluates retrieval quality using:
+
+| Metric | Meaning |
+|---|---|
+| **Rank-1** | Correct identity appears as the first retrieval result |
+| **Rank-5** | Correct identity appears within the first five results |
+| **Rank-10** | Correct identity appears within the first ten results |
+| **mAP** | Measures ranking quality across all correct matches |
+| **mINP** | Measures how deep the last relevant positive appears |
+| **CMC** | Matching performance across retrieval ranks |
+
+Efficiency is measured using:
 
 ```text
-Official FastReID checkpoint
-          ↓
-Load model architecture + configuration
-          ↓
-Load query and gallery data
-          ↓
-Preprocess images / sample tracklet frames
-          ↓
-Extract embeddings
-          ↓
-Cache embeddings
-          ↓
-Cosine similarity
-          ↓
-Remove same-PID + same-camera matches
-          ↓
-Rank gallery
-          ↓
-Rank-1 / Rank-5 / Rank-10
-mAP / mINP / CMC
-          ↓
-Efficiency profiling
-          ↓
-Accuracy + efficiency comparison
-          ↓
-Final deployment candidate
+Batch-1 Latency
+Batch-16 Throughput
+Tracklet Latency
+Peak GPU Memory
+Parameter Count
+Checkpoint Size
 ```
-
-Embeddings are cached under:
-
-```text
-benchmarks/embeddings/
-```
-
-This avoids repeating expensive model inference when evaluation or visualization code changes.
 
 ---
 
-## Evaluation Metrics
+# Final Benchmark Results
 
-The benchmark reports:
-
-| Metric      | Meaning                                                   |
-| ----------- | --------------------------------------------------------- |
-| **Rank-1**  | Correct identity appears as the first result              |
-| **Rank-5**  | Correct identity appears within the first 5 results       |
-| **Rank-10** | Correct identity appears within the first 10 results      |
-| **mAP**     | Quality of ranking all relevant matches                   |
-| **mINP**    | Difficulty of recovering the hardest relevant positive    |
-| **CMC**     | Probability of finding the correct identity within Rank-K |
-
-For MARS:
+The completed benchmark contains:
 
 ```text
-Total queries   : 1,980
-Valid queries   : 1,840
-Skipped queries : 140
+12 Models
+x
+3 Datasets
+=
+36 Accuracy Evaluations
 ```
 
-Queries are skipped when no valid positive remains after standard same-camera filtering.
+## Accuracy and Efficiency Summary
 
----
+| Model | MSMT R1 | MSMT mAP | Market R1 | Market mAP | MARS R1 | MARS mAP | Latency |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **sbs_r101_ibn** | 82.98% | 58.44% | 61.61% | 32.82% | 28.91% | 24.04% | 19.49 ms |
+| **sbs_r50_ibn** | 82.22% | 56.49% | 61.55% | 32.05% | 28.80% | 24.04% | 9.07 ms |
+| **sbs_r50** | 81.74% | 56.36% | 59.74% | 30.48% | 28.91% | 24.19% | 6.02 ms |
+| **sbs_s50** | 82.54% | 59.27% | 57.10% | 29.19% | 27.50% | 23.66% | 13.35 ms |
+| bot_r101_ibn | 79.05% | 55.68% | 52.02% | 26.49% | 27.66% | 23.42% | 23.28 ms |
+| bot_r50_ibn | 76.80% | 52.59% | 50.42% | 26.22% | 27.77% | 23.48% | 11.77 ms |
+| bot_s50 | 78.57% | 55.87% | 49.64% | 24.79% | 28.04% | 23.43% | 16.51 ms |
+| agw_r101_ibn | 77.93% | 56.33% | 48.87% | 24.11% | 27.50% | 23.31% | 20.11 ms |
+| agw_r50_ibn | 77.96% | 55.71% | 47.62% | 23.93% | 27.72% | 23.28% | 10.16 ms |
+| bot_r50 | 73.03% | 48.00% | 43.68% | 20.96% | 28.37% | 23.29% | 9.34 ms |
+| agw_s50 | 69.13% | 40.27% | 43.56% | 19.82% | 26.47% | 23.00% | 15.03 ms |
+| agw_r50 | 74.97% | 51.54% | 43.53% | 21.61% | 28.42% | 23.25% | 6.40 ms |
 
-## Cross-Domain Accuracy Results
-
-All current checkpoints were trained on MSMT17 and evaluated without fine-tuning on Market1501 and MARS.
-
-### Final Accuracy + Efficiency Table
-
-| Model          |  Market R1 | Market mAP |    MARS R1 |   MARS mAP |     Latency |       Throughput | Peak VRAM B16 | Params |
-| -------------- | ---------: | ---------: | ---------: | ---------: | ----------: | ---------------: | ------------: | -----: |
-| `sbs_r101_ibn` | **61.61%** | **32.82%** | **28.91%** |     24.04% |    19.49 ms |     149.51 img/s |     351.29 MB | 42.58M |
-| `sbs_r50_ibn`  |     61.55% |     32.05% |     28.80% |     24.04% |     9.07 ms |     232.88 img/s |     278.66 MB | 23.54M |
-| `sbs_r50`      |     59.74% |     30.48% | **28.91%** | **24.19%** | **6.02 ms** |     244.15 img/s |     278.66 MB | 23.54M |
-| `sbs_s50`      |     57.10% |     29.19% |     27.50% |     23.66% |    13.35 ms |     124.39 img/s |     345.94 MB | 25.44M |
-| `bot_r101_ibn` |     52.02% |     26.49% |     27.66% |     23.42% |    23.28 ms |     262.19 img/s |     282.23 MB | 42.50M |
-| `bot_r50_ibn`  |     50.42% |     26.22% |     27.77% |     23.48% |    11.77 ms |     402.47 img/s |     209.32 MB | 23.51M |
-| `bot_s50`      |     49.64% |     24.79% |     28.04% |     23.43% |    16.51 ms |     185.93 img/s |     256.75 MB | 25.44M |
-| `agw_r101_ibn` |     48.87% |     24.11% |     27.50% |     23.31% |    20.11 ms |     231.07 img/s |     291.60 MB | 42.58M |
-| `agw_r50_ibn`  |     47.62% |     23.93% |     27.72% |     23.28% |    10.16 ms |     358.58 img/s |     218.97 MB | 23.54M |
-| `bot_r50`      |     43.68% |     20.96% |     28.37% |     23.29% |     9.34 ms | **428.51 img/s** | **209.32 MB** | 23.51M |
-| `agw_s50`      |     43.56% |     19.82% |     26.47% |     23.00% |    15.03 ms |     187.27 img/s |     266.25 MB | 25.44M |
-| `agw_r50`      |     43.53% |     21.61% |     28.42% |     23.25% |     6.40 ms |     379.51 img/s |     217.59 MB | 23.54M |
-
-The complete machine-readable result is available at:
+Complete benchmark data is available in:
 
 ```text
 benchmarks/results/final_benchmark_summary.csv
@@ -236,270 +251,253 @@ benchmarks/results/final_benchmark_summary.csv
 
 ---
 
-## Efficiency Profiling
+# Benchmark Visualizations
 
-All 12 models were profiled under the same settings.
+## MSMT17_V2 In-Domain Performance
 
-Reported environment:
+The MSMT17_V2 benchmark measures model performance inside the same domain used to train the checkpoints.
 
-```text
-GPU                    : NVIDIA GeForce RTX 3050 Ti Laptop GPU
-Warm-up iterations     : 10
-Measurement iterations : 50
-Throughput batch       : 16
-Tracklet frames        : 8
-```
+![MSMT17 Rank-1](benchmarks/figures/msmt17_rank1.png)
 
-Measured properties include:
-
-- Batch-1 latency,
-- Batch-16 latency,
-- images per second,
-- 8-frame tracklet latency,
-- peak GPU memory,
-- parameter count,
-- checkpoint size.
-
-The efficiency results are stored in:
-
-```text
-benchmarks/results/fastreid_efficiency.csv
-```
+SBS models produce the strongest Rank-1 results, with the R101-IBN variant reaching the highest Rank-1 score.
 
 ---
 
-# Key Visualizations
+## Market1501 Cross-Domain Performance
 
-The benchmark automatically generates plots under:
-
-```text
-benchmarks/figures/
-```
-
-Below are the most important figures.
-
-## Market1501 Rank-1
+Market1501 measures how well the MSMT17-trained models generalize to a different image-based ReID dataset.
 
 ![Market1501 Rank-1](benchmarks/figures/market1501_rank1.png)
 
-The SBS family clearly provides the strongest Market1501 cross-domain Rank-1 performance.
+The difference between model families becomes clear here, with SBS maintaining significantly stronger cross-domain performance.
 
 ---
 
-## MARS Rank-1
+## MARS Tracklet Performance
+
+MARS changes both the domain and the retrieval unit.
+
+Instead of retrieving single images, every person is represented by a multi-frame tracklet.
 
 ![MARS Rank-1](benchmarks/figures/mars_rank1.png)
 
-MARS results are much closer across the 12 models than Market1501 results.
+The model results become much more compressed compared with MSMT17 and Market1501.
 
----
-
-## Market1501 Rank-1 vs Inference Latency
-
-![Market1501 Rank-1 vs Latency](benchmarks/figures/market_rank1_vs_latency.png)
-
-This figure shows the accuracy/latency trade-off.
-
-The highest-accuracy model is not necessarily the best deployment model when inference cost is considered.
-
----
-
-## MARS Rank-1 vs Tracklet Latency
-
-![MARS Rank-1 vs Tracklet Latency](benchmarks/figures/mars_rank1_vs_tracklet_latency.png)
-
-This visualization is particularly relevant to SHAWAF because the system operates on person tracklets rather than isolated images.
-
----
-
-## Market1501 CMC
-
-![Market1501 CMC](benchmarks/figures/market1501_cmc.png)
-
-The CMC curve shows retrieval performance from Rank-1 to Rank-50 instead of looking only at three fixed ranks.
-
----
-
-## MARS CMC
-
-![MARS CMC](benchmarks/figures/mars_cmc.png)
-
-For MARS, the CMC curve illustrates how frequently the correct person appears as the allowed retrieval depth increases.
-
----
-
-## Final Model Selection
-
-### Selected FastReID candidate: `sbs_r50`
-
-`SBS R50` is currently selected as the primary FastReID deployment candidate for SHAWAF.
-
-It does not have the highest Market1501 Rank-1 score, but it provides the strongest overall balance between accuracy and computational efficiency.
-
-### SBS R50
+Most models fall within a narrow Rank-1 range of approximately:
 
 ```text
-Market1501 Rank-1 : 59.74%
-Market1501 mAP    : 30.48%
-
-MARS Rank-1       : 28.91%
-MARS mAP          : 24.19%
-
-Batch-1 latency   : 6.02 ms
-Throughput        : 244.15 images/s
-Peak VRAM B16     : 278.66 MB
-Parameters        : 23.54M
-```
-
-### Why not simply use SBS R101-IBN?
-
-`SBS R101-IBN` gives the highest Market1501 accuracy:
-
-```text
-Rank-1 = 61.61%
-mAP    = 32.82%
-```
-
-However:
-
-```text
-SBS R101-IBN
-Latency   : 19.49 ms
-Params    : 42.58M
-MARS R1   : 28.91%
-
-SBS R50
-Latency   : 6.02 ms
-Params    : 23.54M
-MARS R1   : 28.91%
-```
-
-So the deeper R101 model is more than three times slower in Batch-1 inference while providing only a modest Market1501 accuracy improvement and no Rank-1 improvement on MARS.
-
-For the current SHAWAF use case, `sbs_r50` is therefore the stronger deployment trade-off.
-
-This recommendation is specific to the current benchmark protocol and hardware. It is not a claim that SBS R50 is universally the best ReID model.
-
----
-
-## Running the Benchmark
-
-### Install the project
-
-From the repository root:
-
-```bash
-pip install -e .
-```
-
-### Validate the model registry
-
-```bash
-python scripts/validate_model_registry.py
-```
-
-### Validate all FastReID models
-
-```bash
-python scripts/validate_all_fastreid_models.py
-```
-
-### Run the complete cross-domain benchmark
-
-```bash
-python scripts/run_cross_domain_benchmark.py
-```
-
-The runner automatically skips completed embedding caches and evaluation results.
-
-### Build the accuracy summary
-
-```bash
-python scripts/summarize_benchmark_results.py
-```
-
-### Run efficiency profiling
-
-```bash
-python scripts/profile_fastreid_models.py
-```
-
-### Build the final combined summary
-
-```bash
-python scripts/build_final_benchmark_summary.py
-```
-
-### Generate benchmark figures
-
-```bash
-python scripts/generate_benchmark_figures.py
-```
-
-### Generate CMC curves
-
-```bash
-python scripts/generate_cmc_curves.py
+26.5% - 28.9%
 ```
 
 ---
 
-## Main Output Files
+# Domain Generalization
+
+The following visualization compares Rank-1 performance across all three evaluation settings:
+
+![Rank-1 Domain Transfer](benchmarks/figures/rank1_domain_transfer.png)
+
+A clear performance reduction appears when moving from:
+
+```text
+MSMT17_V2
+    |
+    v
+Market1501
+    |
+    v
+MARS
+```
+
+The MSMT17 to Market1501 change mainly reflects **cross-domain generalization**.
+
+The transition to MARS also introduces a change from:
+
+```text
+Single-Image ReID
+        |
+        v
+Tracklet-Based ReID
+```
+
+so the MARS reduction should not be interpreted as domain shift alone.
+
+---
+
+# Accuracy vs Efficiency
+
+Accuracy alone is not enough for deployment.
+
+The ReID encoder will eventually process large numbers of person detections, so inference cost is also important.
+
+![Market Rank-1 vs Latency](benchmarks/figures/market_rank1_vs_latency.png)
+
+The benchmark shows that deeper models can provide better accuracy, but the improvement may come with significantly higher inference latency and model complexity.
+
+For example:
+
+```text
+SBS-R101-IBN
+
+Market Rank-1 : 61.61%
+MARS Rank-1   : 28.91%
+Latency       : 19.49 ms
+Parameters    : 42.58M
+```
+
+while:
+
+```text
+SBS-R50
+
+Market Rank-1 : 59.74%
+MARS Rank-1   : 28.91%
+Latency       : 6.02 ms
+Parameters    : 23.54M
+```
+
+This difference is important when choosing models for large-scale CCTV processing.
+
+---
+
+# Main Findings
+
+## SBS provides the strongest image-based performance
+
+The SBS family produces the strongest results on both:
+
+```text
+MSMT17_V2
+Market1501
+```
+
+The top Market1501 Rank-1 scores are all produced by SBS models.
+
+---
+
+## Cross-domain ReID remains difficult
+
+Performance drops considerably when models trained on MSMT17_V2 are evaluated directly on Market1501.
+
+For example:
+
+```text
+SBS-R101-IBN
+
+MSMT17 Rank-1
+82.98%
+
+Market1501 Rank-1
+61.61%
+```
+
+This demonstrates the importance of domain generalization in Person Re-Identification.
+
+---
+
+## MARS behaves differently from the image datasets
+
+Market1501 Rank-1 spans approximately:
+
+```text
+43.5% - 61.6%
+```
+
+while MARS Rank-1 spans only approximately:
+
+```text
+26.5% - 28.9%
+```
+
+The difference between model architectures becomes much smaller under the current tracklet representation.
+
+This indicates that the tracklet pipeline itself has a large influence on video-based ReID performance.
+
+---
+
+# Baseline Model
+
+For controlled experiments inside this benchmark, **SBS-R50** provides a strong balance between accuracy and computational cost.
+
+Its measured performance is:
+
+```text
+MSMT17_V2
+Rank-1 : 81.74%
+mAP    : 56.36%
+
+Market1501
+Rank-1 : 59.74%
+mAP    : 30.48%
+
+MARS
+Rank-1 : 28.91%
+mAP    : 24.19%
+```
+
+Efficiency:
+
+```text
+Batch-1 Latency
+6.02 ms
+
+Throughput
+244.15 images/s
+
+Peak VRAM — Batch 16
+278.66 MB
+
+Parameters
+23.54M
+```
+
+This provides strong image-based performance while remaining substantially lighter than SBS-R101-IBN.
+
+---
+
+# Embedding Cache
+
+Model inference and metric evaluation are separated.
+
+Generated embeddings are stored under:
 
 ```text
 benchmarks/
-├── embeddings/
-│   └── <model>/<dataset>/<protocol>/
-│       ├── query.npz
-│       └── gallery.npz
+└── embeddings/
+    └── <model_id>/
+        └── <dataset>/
+            └── <protocol>/
+                ├── query.npz
+                └── gallery.npz
+```
+
+This allows metrics, CMC curves, summaries, and visualizations to be regenerated without running the neural network again.
+
+Example:
+
+```text
+benchmarks/embeddings/sbs_r50/
+
+├── msmt17/
+│   └── single_image_l2/
 │
-├── results/
-│   ├── cross_domain_summary.csv
-│   ├── cross_domain_summary.md
-│   ├── fastreid_efficiency.csv
-│   ├── final_benchmark_summary.csv
-│   ├── final_benchmark_summary.md
-│   └── cmc/
+├── market1501/
+│   └── single_image_l2/
 │
-└── figures/
-    ├── market1501_rank1.png
-    ├── market1501_map.png
-    ├── mars_rank1.png
-    ├── mars_map.png
-    ├── batch1_latency.png
-    ├── throughput.png
-    ├── tracklet_latency.png
-    ├── peak_vram_batch16.png
-    ├── parameters.png
-    ├── market_rank1_vs_latency.png
-    ├── market_map_vs_throughput.png
-    ├── mars_rank1_vs_tracklet_latency.png
-    ├── market_rank1_vs_vram.png
-    ├── market1501_cmc.png
-    └── mars_cmc.png
+└── mars/
+    └── uniform8_mean_raw_l2/
 ```
 
 ---
 
-## Repository Structure
+# Project Structure
 
 ```text
-Shawaf-ReID-V2/
-├── README.md
-├── pyproject.toml
+Shawaf-FastReID-MSMT17-Benchmark/
 │
 ├── configs/
 │   └── benchmark/
 │       └── fastreid_msmt17_models.yaml
-│
-├── checkpoints/
-│   └── fastreid/
-│       └── msmt17/
-│
-├── data/
-│   ├── Market-1501-v15.09.15/
-│   ├── MSMT17/
-│   └── mars/
 │
 ├── reid/
 │   ├── benchmark/
@@ -507,13 +505,12 @@ Shawaf-ReID-V2/
 │   ├── embeddings/
 │   ├── evaluation/
 │   ├── models/
-│   ├── profiling/
-│   └── visualization/
+│   └── profiling/
 │
 ├── scripts/
-│   ├── run_cross_domain_benchmark.py
 │   ├── build_embedding_cache.py
 │   ├── evaluate_embedding_cache.py
+│   ├── run_cross_domain_benchmark.py
 │   ├── summarize_benchmark_results.py
 │   ├── profile_fastreid_models.py
 │   ├── build_final_benchmark_summary.py
@@ -525,60 +522,176 @@ Shawaf-ReID-V2/
 │   ├── results/
 │   └── figures/
 │
+├── checkpoints/
+├── data/
+│
 └── third_party/
     └── fast-reid/
 ```
 
----
-
-## Current Limitations
-
-The current benchmark has several intentional limitations.
-
-**MSMT17_V2 verification is pending.**  
-The currently available local MSMT17 copy is not used as the final in-domain benchmark because its provenance/version has not been verified. Once a verified MSMT17_V2 copy is available, the same benchmark pipeline can be extended to include in-domain MSMT17 evaluation.
-
-**MARS uses a fixed image-model tracklet protocol.**  
-Eight frames are uniformly sampled and mean-pooled. This keeps the comparison fair across the 12 image-based FastReID models, but it is not a comparison against dedicated temporal video-ReID architectures.
-
-**Efficiency results are hardware-specific.**  
-Latency, throughput, and VRAM values depend on the GPU, CUDA/PyTorch environment, batch size, and profiling protocol.
-
-**Qualitative retrieval visualization is currently skipped.**  
-The current benchmark focuses on quantitative accuracy, efficiency, and CMC analysis.
-
----
-
-## Next Steps
-
-Planned extensions include:
-
-- verified MSMT17_V2 in-domain evaluation,
-- comparison with OSNet and additional ReID model families,
-- evaluation of stronger cross-domain approaches,
-- optional re-ranking experiments,
-- large-scale vector search integration,
-- deployment of the selected ReID encoder inside the SHAWAF retrieval pipeline.
-
----
-
-## Current Status
+Large runtime assets such as:
 
 ```text
-FastReID model integration        ✅
-12-model compatibility validation ✅
-Market1501 loader                 ✅
-MARS loader                       ✅
-Tracklet sampling                 ✅
-Embedding extraction              ✅
-Embedding caching                 ✅
-Rank evaluation                   ✅
-Cross-domain benchmark            ✅
-Efficiency profiling              ✅
-Accuracy/efficiency summary       ✅
-Benchmark visualizations          ✅
-CMC curves                        ✅
-Qualitative retrieval             ⏭️ intentionally skipped
-Final FastReID candidate          ✅ SBS R50
-MSMT17_V2 final evaluation        ⏳ pending verified dataset access
+datasets
+checkpoints
+embedding caches
+virtual environments
+third-party repositories
 ```
+
+are excluded from Git where appropriate.
+
+---
+
+# Running the Benchmark
+
+Install the local project:
+
+```bash
+python -m pip install -e .
+```
+
+Validate the model registry:
+
+```bash
+python scripts/validate_model_registry.py
+```
+
+Validate the datasets:
+
+```bash
+python scripts/test_msmt17_loader.py
+python scripts/test_market1501_loader.py
+python scripts/test_mars_loader.py
+```
+
+Run all benchmark evaluations:
+
+```bash
+python scripts/run_cross_domain_benchmark.py
+```
+
+Run a specific dataset:
+
+```bash
+python scripts/run_cross_domain_benchmark.py --datasets msmt17
+```
+
+Run a specific model:
+
+```bash
+python scripts/run_cross_domain_benchmark.py --models sbs_r50
+```
+
+Run one model on one dataset:
+
+```bash
+python scripts/run_cross_domain_benchmark.py --models sbs_r50 --datasets mars
+```
+
+---
+
+# Generate Reports
+
+Generate the accuracy summary:
+
+```bash
+python scripts/summarize_benchmark_results.py
+```
+
+Generate the final accuracy and efficiency summary:
+
+```bash
+python scripts/build_final_benchmark_summary.py
+```
+
+Generate benchmark figures:
+
+```bash
+python scripts/generate_benchmark_figures.py
+```
+
+Generate CMC data and figures:
+
+```bash
+python scripts/generate_cmc_curves.py
+```
+
+---
+
+# Output
+
+Main benchmark results:
+
+```text
+benchmarks/results/
+├── cross_domain_summary.csv
+├── cross_domain_summary.md
+├── fastreid_efficiency.csv
+├── final_benchmark_summary.csv
+├── final_benchmark_summary.md
+│
+├── <model_id>/
+│   ├── msmt17/
+│   ├── market1501/
+│   └── mars/
+│
+└── cmc/
+```
+
+Visualizations are stored in:
+
+```text
+benchmarks/figures/
+```
+
+Embedding caches are stored in:
+
+```text
+benchmarks/embeddings/
+```
+
+---
+
+# Benchmark Status
+
+```text
+FastReID Models          12
+
+Evaluation Datasets      3
+
+Accuracy Evaluations     36
+
+MSMT17_V2                In-Domain
+Market1501               Cross-Domain
+MARS                     Cross-Domain Tracklet
+
+Accuracy Metrics         Rank / mAP / mINP / CMC
+
+Efficiency Metrics       Latency / Throughput / VRAM / Parameters
+
+Benchmark Reports        Generated
+
+Visualization Reports    Generated
+```
+
+---
+
+# About SHAWAF
+
+This repository contains the benchmarking layer for the appearance-based Person Re-Identification component of **SHAWAF**.
+
+The broader system combines ReID with:
+
+```text
+Person Detection
+Tracking
+Tracklet Construction
+Semantic Understanding
+Vector Retrieval
+Metadata Filtering
+Re-Ranking
+Video Search
+```
+
+This benchmark provides a controlled environment for measuring the behavior, generalization, and computational cost of different ReID encoders before they are integrated into the larger system.

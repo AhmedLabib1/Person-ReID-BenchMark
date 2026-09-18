@@ -1,6 +1,23 @@
-# SHAWAF ReID Cross-Domain Benchmark
+# SHAWAF ReID In-Domain + Cross-Domain Benchmark
 
-All FastReID checkpoints were trained on MSMT17 and evaluated without fine-tuning on Market1501 and MARS.
+All FastReID checkpoints were trained on MSMT17_V2. MSMT17_V2 is evaluated in-domain, while Market1501 and MARS are evaluated cross-domain without fine-tuning.
+
+## MSMT17_V2
+
+| Model | Family | Backbone | Rank-1 | Rank-5 | Rank-10 | mAP | mINP |
+|---|---|---|---:|---:|---:|---:|---:|
+| sbs_r101_ibn | SBS | R101-IBN | 82.98% | 90.95% | 93.28% | 58.44% | 11.86% |
+| sbs_s50 | SBS | S50 | 82.54% | 90.81% | 92.78% | 59.27% | 12.93% |
+| sbs_r50_ibn | SBS | R50-IBN | 82.22% | 90.69% | 92.87% | 56.49% | 10.42% |
+| sbs_r50 | SBS | R50 | 81.74% | 90.18% | 92.49% | 56.36% | 10.13% |
+| bot_r101_ibn | BoT | R101-IBN | 79.05% | 88.81% | 91.50% | 55.68% | 13.63% |
+| bot_s50 | BoT | S50 | 78.57% | 88.64% | 91.69% | 55.87% | 13.90% |
+| agw_r50_ibn | AGW | R50-IBN | 77.96% | 87.76% | 90.69% | 55.71% | 14.33% |
+| agw_r101_ibn | AGW | R101-IBN | 77.93% | 87.90% | 90.62% | 56.33% | 15.62% |
+| bot_r50_ibn | BoT | R50-IBN | 76.80% | 87.59% | 90.70% | 52.59% | 11.59% |
+| agw_r50 | AGW | R50 | 74.97% | 86.22% | 89.81% | 51.54% | 12.12% |
+| bot_r50 | BoT | R50 | 73.03% | 85.29% | 89.04% | 48.00% | 9.67% |
+| agw_s50 | AGW | S50 | 69.13% | 81.95% | 86.14% | 40.27% | 4.86% |
 
 ## Market1501
 
@@ -38,7 +55,6 @@ All FastReID checkpoints were trained on MSMT17 and evaluated without fine-tunin
 
 ## Protocols
 
-- Market1501: single-image embedding followed by L2 normalization.
-- MARS: 8 uniformly sampled frames per tracklet, raw-frame mean pooling, then final L2 normalization.
-
-MSMT17_V2 in-domain evaluation is excluded until a verified copy of the dataset is available.
+- MSMT17_V2: single-image embedding -> L2 normalization (in-domain).
+- Market1501: single-image embedding -> L2 normalization (cross-domain).
+- MARS: uniform 8-frame sampling -> raw-feature mean pooling -> final L2 normalization (cross-domain).

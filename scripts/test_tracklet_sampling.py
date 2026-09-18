@@ -67,6 +67,32 @@ def main() -> None:
     )
 
     print()
+    print("SINGLE-FRAME TEST")
+    print("-" * 80)
+
+    single_index = uniform_sample_indices(
+        num_available_frames=40,
+        num_samples=1,
+    )
+
+    print(
+        f"40 frames -> 1 sample  : "
+        f"{single_index}"
+    )
+
+    expected_single = (20,)
+
+    if single_index != expected_single:
+        raise RuntimeError(
+            "Single-frame sampling did not "
+            "select the middle frame."
+        )
+
+    print(
+        "Single-frame sampling : PASS"
+    )
+
+    print()
     print("SHORT TRACKLET TEST")
     print("-" * 80)
 
