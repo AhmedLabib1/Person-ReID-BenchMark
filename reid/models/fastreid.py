@@ -68,22 +68,8 @@ class FastReIDEncoder:
             isinstance(checkpoint, dict) and "model" in checkpoint
         ) else checkpoint
 
-        remapped = {}
-        for key, value in state.items():
-            new_key = key
-            if new_key.startswith("heads.bnneck."):
-                new_key = "heads.bottleneck.0." + new_key[len("heads.bnneck."):]
-            elif new_key == "heads.classifier.weight":
-                new_key = "heads.weight"
-            remapped[new_key] = value
-
-        # Eval builds the head with 0 classes; the zoo classifier is 751-way.
         model_state = self.model.state_dict()
-        classifier = remapped.get("heads.weight")
-        if classifier is not None:
-            expected = model_state.get("heads.weight")
-            if expected is None or expected.shape != classifier.shape:
-                remapped.pop("heads.weight")
+        remapped = self._remap_checkpoint(state, model_state)
 
         incompatible = self.model.load_state_dict(remapped, strict=False)
         skipped = [
@@ -91,8 +77,9 @@ class FastReIDEncoder:
             if not key.startswith("pixel_")
         ]
         missing = [
-            key for key in incompatible.missing_keys
-            if key != "heads.weight"
+            key
+            for key in incompatible.missing_keys
+            if key != "heads.weight" and not key.endswith("_head.weight")
         ]
         if missing:
             raise RuntimeError(
@@ -101,6 +88,57 @@ class FastReIDEncoder:
             )
         if skipped:
             print("Unused checkpoint keys:", ", ".join(skipped))
+
+    @staticmethod
+    def _remap_checkpoint(
+        state: dict,
+        model_state: dict,
+    ) -> dict:
+        """
+        FastReID zoo checkpoints predate some head refactors.
+
+        SBS/BoT/AGW: heads.bnneck / heads.classifier.
+        MGN: per-branch b*_pool (GeM + 1x1 + BN) plus b*_head.bnneck.
+        Stripe heads (b21, b31, ...) reuse the parent branch pool weights.
+        """
+
+        remapped: dict = {}
+        for key, value in state.items():
+            new_key = key
+            if new_key.endswith(".classifier.weight"):
+                new_key = new_key[: -len("classifier.weight")] + "weight"
+            elif ".bnneck." in new_key:
+                prefix, rest = new_key.split(".bnneck.", 1)
+                if f"{prefix}.bottleneck.1.weight" in model_state:
+                    new_key = f"{prefix}.bottleneck.1.{rest}"
+                else:
+                    new_key = f"{prefix}.bottleneck.0.{rest}"
+            remapped[new_key] = value
+
+        pool_dests = {
+            "b1_pool": ["b1_head"],
+            "b2_pool": ["b2_head", "b21_head", "b22_head"],
+            "b3_pool": ["b3_head", "b31_head", "b32_head", "b33_head"],
+        }
+        for key, value in state.items():
+            for pool_prefix, heads in pool_dests.items():
+                prefix = pool_prefix + "."
+                if not key.startswith(prefix):
+                    continue
+                index, _, name = key[len(prefix) :].partition(".")
+                for head in heads:
+                    if index == "0":
+                        remapped[f"{head}.pool_layer.{name}"] = value
+                    elif index == "1":
+                        remapped[f"{head}.bottleneck.0.{name}"] = value
+                    elif index == "2":
+                        remapped[f"{head}.bottleneck.1.{name}"] = value
+
+        for key in list(remapped):
+            expected = model_state.get(key)
+            if expected is None or expected.shape != remapped[key].shape:
+                remapped.pop(key)
+        return remapped
 
     @staticmethod
     def _resolve_device(device: str) -> str:

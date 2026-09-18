@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 from reid.aggregate import mean_pool_l2
 from reid.data.tracklet import Tracklet
-from reid.metrics import camera_id_to_int, cosine_distance, evaluate_rank
+from reid.metrics import camera_id_to_int, evaluate_rank_from_features
 from reid.profiling import (
     gpu_memory_snapshot,
     merge_extract_stats,
@@ -137,9 +137,9 @@ def evaluate_encoder(
     }
 
     rank_start = time.perf_counter()
-    distmat = cosine_distance(query_feat, gallery_feat)
-    metrics = evaluate_rank(
-        distmat=distmat,
+    metrics = evaluate_rank_from_features(
+        query_features=query_feat,
+        gallery_features=gallery_feat,
         query_pids=query_pids,
         gallery_pids=gallery_pids,
         query_camids=query_camids,

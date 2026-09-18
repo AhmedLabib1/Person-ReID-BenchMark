@@ -103,7 +103,11 @@ def all_specs() -> dict[str, ModelSpec]:
         "msmt_agw_s50": "#e11d48",
         "msmt_agw_r101_ibn": "#be123c",
     }
-    measured_market = {"sbs_r50", "bot_r50", "agw_r50"}
+    measured_market = {
+        f"{family}_{backbone}"
+        for family in ("sbs", "bot", "agw")
+        for backbone in ("r50", "r50_ibn", "s50", "r101_ibn")
+    }
 
     specs: dict[str, ModelSpec] = {}
     for family_key, family_name, yaml_prefix, notes in families:
@@ -136,7 +140,10 @@ def all_specs() -> dict[str, ModelSpec]:
                 color=msmt_colors[msmt_key],
                 config_file=msmt / yaml_name,
                 weight_name=f"msmt_{weight_stem}.pth",
-                notes=f"{notes}. Cross-domain: trained on MSMT17, eval on Market1501/MARS.",
+                notes=(
+                    f"{notes}. Trained on MSMT17; eval on Market1501/MARS "
+                    "(cross-domain) and MSMT17 (in-domain)."
+                ),
                 result_status="imported",
             )
 
@@ -149,7 +156,8 @@ def all_specs() -> dict[str, ModelSpec]:
         config_file=market / "mgn_R50-ibn.yml",
         weight_name="market_mgn_R50-ibn.pth",
         notes="Multi-granularity network. No MSMT17 zoo checkpoint.",
-        result_status="registered",
+        default_sweep=True,
+        result_status="measured",
     )
 
     specs["openclip_vitb32"] = ModelSpec(

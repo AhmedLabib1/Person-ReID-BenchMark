@@ -13,7 +13,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from reid.models.registry import all_specs, leftover_specs
+from reid.models.registry import all_specs
 
 
 def parse_args() -> argparse.Namespace:
@@ -102,13 +102,30 @@ def grouped_bars(
     if not models:
         return
 
-    x = np.arange(len(models))
-    width = 0.36
-    fig, ax = plt.subplots(figsize=figsize)
-    palette = {"market1501": "#2563eb", "mars": "#ea580c"}
-    labels = {"market1501": "Market1501", "mars": "MARS"}
+    present = [
+        dataset
+        for dataset in datasets
+        if any(row.get("dataset") == dataset for row in rows)
+    ]
+    if not present:
+        return
 
-    for offset, dataset in zip((-width / 2, width / 2), datasets):
+    x = np.arange(len(models))
+    width = 0.72 / max(len(present), 1)
+    offsets = (np.arange(len(present)) - (len(present) - 1) / 2.0) * width
+    fig, ax = plt.subplots(figsize=figsize)
+    palette = {
+        "market1501": "#2563eb",
+        "mars": "#ea580c",
+        "msmt17": "#0f766e",
+    }
+    labels = {
+        "market1501": "Market1501",
+        "mars": "MARS",
+        "msmt17": "MSMT17",
+    }
+
+    for offset, dataset in zip(offsets, present):
         values = []
         for model in models:
             match = next(
@@ -142,7 +159,10 @@ def grouped_bars(
 
     ax.set_xticks(x)
     ax.set_xticklabels(
-        [specs[key].label.replace("FastReID ", "") for key in models],
+        [
+            specs[key].label.replace("FastReID ", "").replace(" (MSMT17)", "")
+            for key in models
+        ],
         rotation=rotate,
         ha="right",
     )
@@ -227,7 +247,7 @@ def transfer_bars(rows: list[dict], output: Path) -> None:
 
 def pareto(rows: list[dict], output: Path) -> None:
     fig, ax = plt.subplots(figsize=(8.5, 6))
-    markers = {"market1501": "o", "mars": "s"}
+    markers = {"market1501": "o", "mars": "s", "msmt17": "^"}
     specs = all_specs()
     for row in rows:
         if not _ours_gpu_protocol(row):
@@ -303,7 +323,61 @@ def _metric_cell(rows: list[dict], model: str, dataset: str, metric: str) -> str
     )
     if match is None:
         return "—"
+    metrics = match.get("metrics")
+    if not isinstance(metrics, dict) or metric not in metrics:
+        return "—"
     return f"{_val(match, 'metrics', metric):.2f}"
+
+
+DATASETS = [
+    ("market1501", "Market1501"),
+    ("mars", "MARS"),
+    ("msmt17", "MSMT17"),
+]
+CMC_METRICS = ("Rank-1", "Rank-5", "Rank-10", "Rank-20")
+ACCURACY_METRICS = ("Rank-1", "mAP", "mINP")
+PLOT_METRICS = (
+    ("Rank-1", "Rank-1 (%)", "rank1"),
+    ("Rank-5", "Rank-5 (%)", "rank5"),
+    ("Rank-10", "Rank-10 (%)", "rank10"),
+    ("Rank-20", "Rank-20 (%)", "rank20"),
+    ("mAP", "mAP (%)", "map"),
+    ("mINP", "mINP (%)", "minp"),
+)
+
+
+def _model_keys(subset: list[dict], specs: dict) -> list[str]:
+    keys: list[str] = []
+    for row in subset:
+        key = str(row.get("model_key"))
+        if key in specs and key not in keys:
+            keys.append(key)
+    keys.sort(
+        key=lambda model_key: _val(
+            next(
+                (
+                    row
+                    for row in subset
+                    if row.get("model_key") == model_key
+                    and row.get("dataset") == "market1501"
+                ),
+                None,
+            ),
+            "metrics",
+            "Rank-1",
+        ),
+        reverse=True,
+    )
+    return keys
+
+
+def snapshot_results(source: Path, dest: Path) -> None:
+    if not source.exists():
+        return
+    dest.mkdir(parents=True, exist_ok=True)
+    for path in source.glob("*.json"):
+        target = dest / path.name
+        target.write_bytes(path.read_bytes())
 
 
 def write_markdown(rows: list[dict], output: Path) -> None:
@@ -321,99 +395,113 @@ def write_markdown(rows: list[dict], output: Path) -> None:
         and specs[str(row.get("model_key"))].trained_on == "MSMT17"
     ]
 
-    def table(title: str, subset: list[dict]) -> list[str]:
-        keys: list[str] = []
-        for row in subset:
-            key = str(row.get("model_key"))
-            if key in specs and key not in keys:
-                keys.append(key)
-        keys.sort(
-            key=lambda model_key: _val(
-                next(
-                    (
-                        row
-                        for row in subset
-                        if row.get("model_key") == model_key
-                        and row.get("dataset") == "market1501"
-                    ),
-                    None,
-                ),
-                "metrics",
-                "Rank-1",
-            ),
-            reverse=True,
-        )
+    def summary_table(title: str, subset: list[dict]) -> list[str]:
+        keys = _model_keys(subset, specs)
         lines = [
             f"### {title}",
             "",
-            "| Model | Trained on | Market1501 Rank-1 | Market1501 mAP | MARS Rank-1 | MARS mAP |",
-            "|---|---|---:|---:|---:|---:|",
+            "| Model | Trained on | Market Rank-1 | Market mAP | Market mINP | MARS Rank-1 | MARS mAP | MARS mINP | MSMT Rank-1 | MSMT mAP | MSMT mINP |",
+            "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
         for key in keys:
             spec = specs[key]
+            cells = [
+                _metric_cell(subset, key, dataset, metric)
+                for dataset, _label in DATASETS
+                for metric in ACCURACY_METRICS
+            ]
             lines.append(
-                f"| {spec.label} | {spec.trained_on} | "
-                f"{_metric_cell(subset, key, 'market1501', 'Rank-1')} | "
-                f"{_metric_cell(subset, key, 'market1501', 'mAP')} | "
-                f"{_metric_cell(subset, key, 'mars', 'Rank-1')} | "
-                f"{_metric_cell(subset, key, 'mars', 'mAP')} |"
+                f"| {spec.label} | {spec.trained_on} | " + " | ".join(cells) + " |"
             )
         return lines
 
-    lines = table("In-domain / same-campus (Market1501 weights + foundation)", in_domain)
+    def dataset_table(title: str, subset: list[dict], dataset: str) -> list[str]:
+        keys = _model_keys(subset, specs)
+        if not keys:
+            return []
+        if all(
+            _metric_cell(subset, key, dataset, "Rank-1") == "—" for key in keys
+        ):
+            return []
+        lines = [
+            f"### {title}",
+            "",
+            "| Model | Rank-1 | Rank-5 | Rank-10 | Rank-20 | mAP | mINP |",
+            "|---|---:|---:|---:|---:|---:|---:|",
+        ]
+        for key in keys:
+            spec = specs[key]
+            cells = [
+                _metric_cell(subset, key, dataset, metric)
+                for metric in (*CMC_METRICS, "mAP", "mINP")
+            ]
+            lines.append(f"| {spec.label} | " + " | ".join(cells) + " |")
+        return lines
+
+    lines = summary_table(
+        "In-domain / same-campus (Market1501 weights + foundation)",
+        in_domain,
+    )
     lines += [""]
-    lines += table("Cross-domain (MSMT17 weights, no fine-tune)", cross)
-    lines += [
-        "",
-        "### Compute (our CUDA-event protocol, Market1501 extract)",
-        "",
-        "| Model | Params (M) | Weights (MiB) | Allocated (MiB) | Peak (MiB) | GPU ms/img | GPU img/s |",
-        "|---|---:|---:|---:|---:|---:|---:|",
-    ]
+    lines += summary_table(
+        "Cross-domain (MSMT17 weights, no fine-tune)",
+        cross,
+    )
+    for dataset, label in DATASETS:
+        for block in (
+            dataset_table(
+                f"{label} CMC + mAP (Market1501-trained + foundation)",
+                in_domain,
+                dataset,
+            ),
+            dataset_table(
+                f"{label} CMC + mAP (MSMT17-trained)",
+                cross,
+                dataset,
+            ),
+        ):
+            if block:
+                lines += [""]
+                lines += block
+
+    compute_rows: list[tuple[float, str]] = []
     seen: set[str] = set()
     for row in in_domain:
         if not _ours_gpu_protocol(row):
+            continue
+        if row.get("dataset") != "market1501":
             continue
         key = str(row.get("model_key"))
         if key not in specs or key in seen:
             continue
         seen.add(key)
         spec = specs[key]
-        lines.append(
+        img_s = _val(row, "efficiency", "inference", "images_per_s", "gpu_steady")
+        line = (
             f"| {spec.label} | "
             f"{_val(row, 'efficiency', 'model', 'parameters') / 1e6:.1f} | "
             f"{_val(row, 'efficiency', 'model', 'total_mb'):.1f} | "
             f"{_val(row, 'efficiency', 'gpu_memory', 'after_load', 'allocated_mb'):.1f} | "
             f"{_val(row, 'efficiency', 'gpu_memory', 'peak', 'peak_allocated_mb'):.1f} | "
             f"{_val(row, 'efficiency', 'inference', 'ms_per_image', 'gpu_steady'):.2f} | "
-            f"{_val(row, 'efficiency', 'inference', 'images_per_s', 'gpu_steady'):.1f} |"
+            f"{img_s:.1f} |"
         )
+        compute_rows.append((img_s, line))
+    compute_rows.sort(key=lambda item: item[0], reverse=True)
 
     lines += [
         "",
-        "### FastReID zoo still left to run under this protocol",
+        "### Compute (CUDA-event protocol, Market1501 extract)",
         "",
-        "| Key | Model | Trained on | Why it is left |",
-        "|---|---|---|---|",
+        "| Model | Params (M) | Weights (MiB) | Allocated (MiB) | Peak (MiB) | GPU ms/img | GPU img/s |",
+        "|---|---:|---:|---:|---:|---:|---:|",
     ]
-    leftover_notes = {
-        "mgn_r50_ibn": "Market zoo checkpoint exists; heavier multi-granularity head.",
-    }
-    for spec in leftover_specs():
-        note = leftover_notes.get(
-            spec.key,
-            "Market1501 zoo checkpoint exists; not extracted yet on SHAWAF loaders.",
-        )
-        lines.append(f"| `{spec.key}` | {spec.label} | {spec.trained_on} | {note} |")
+    lines.extend(line for _speed, line in compute_rows)
     lines += [
         "",
-        "Also not in this bench (on purpose):",
-        "",
-        "- DukeMTMC zoo weights (dataset withdrawn).",
-        "- Vehicle ReID (VeRi / VehicleID / VERI-Wild).",
-        "- FastReID ViT (`bagtricks_vit.yml`) — config only, no zoo `.pth`.",
-        "- MSMT17 **in-domain** eval (dataset copy not verified).",
-        "- Newer non-FastReID models (SOLIDER, CLIP-ReID, CLIMB-ReID).",
+        "Not in this bench (on purpose): DukeMTMC zoo, vehicle ReID,",
+        "FastReID ViT (no zoo `.pth`), newer non-FastReID models",
+        "(SOLIDER, CLIP-ReID, CLIMB-ReID).",
         "",
     ]
     output.write_text("\n".join(lines), encoding="utf-8")
@@ -447,65 +535,53 @@ def main() -> None:
     ]
 
     grouped_bars(
-        in_domain,
-        ["market1501", "mars"],
-        lambda row: _val(row, "metrics", "Rank-1"),
-        "Rank-1 — Market1501 weights + foundation encoders",
-        "Rank-1 (%)",
-        args.output_dir / "rank1.png",
-        ylim=(0, 105),
-    )
-    grouped_bars(
-        in_domain,
-        ["market1501", "mars"],
-        lambda row: _val(row, "metrics", "mAP"),
-        "mAP — Market1501 weights + foundation encoders",
-        "mAP (%)",
-        args.output_dir / "map.png",
-        ylim=(0, 105),
-    )
-    grouped_bars(
         gpu_rows,
-        ["market1501", "mars"],
+        ["market1501", "mars", "msmt17"],
         lambda row: _val(
             row, "efficiency", "gpu_memory", "peak", "peak_allocated_mb"
         ),
         "Peak GPU memory (our extract protocol)",
         "Peak allocated (MiB)",
         args.output_dir / "peak_vram.png",
+        rotate=24,
+        figsize=(16.0, 6.2),
     )
     grouped_bars(
         gpu_rows,
-        ["market1501", "mars"],
+        ["market1501", "mars", "msmt17"],
         lambda row: _val(row, "efficiency", "inference", "ms_per_image", "gpu_steady"),
         "Steady GPU latency (our CUDA-event protocol)",
         "ms / image",
         args.output_dir / "latency.png",
+        rotate=24,
+        figsize=(16.0, 6.2),
     )
     pareto(gpu_rows, args.output_dir / "pareto.png")
 
-    grouped_bars(
-        cross,
-        ["market1501", "mars"],
-        lambda row: _val(row, "metrics", "Rank-1"),
-        "Rank-1 — MSMT17 weights, no fine-tune",
-        "Rank-1 (%)",
-        args.output_dir / "rank1_msmt.png",
-        ylim=(0, 80),
-        rotate=28,
-        figsize=(13.5, 6.0),
-    )
-    grouped_bars(
-        cross,
-        ["market1501", "mars"],
-        lambda row: _val(row, "metrics", "mAP"),
-        "mAP — MSMT17 weights, no fine-tune",
-        "mAP (%)",
-        args.output_dir / "map_msmt.png",
-        ylim=(0, 50),
-        rotate=28,
-        figsize=(13.5, 6.0),
-    )
+    for metric, ylabel, stem in PLOT_METRICS:
+        grouped_bars(
+            in_domain,
+            ["market1501", "mars", "msmt17"],
+            lambda row, metric=metric: _val(row, "metrics", metric),
+            f"{metric} — Market1501 weights + foundation encoders",
+            ylabel,
+            args.output_dir / f"{stem}.png",
+            ylim=(0, 105),
+            rotate=24,
+            figsize=(16.0, 6.2),
+        )
+        grouped_bars(
+            cross,
+            ["market1501", "mars", "msmt17"],
+            lambda row, metric=metric: _val(row, "metrics", metric),
+            f"{metric} — MSMT17 weights (Market/MARS transfer, MSMT17 in-domain)",
+            ylabel,
+            args.output_dir / f"{stem}_msmt.png",
+            ylim=(0, 105),
+            rotate=28,
+            figsize=(15.0, 6.2),
+        )
+
     transfer_bars(rows, args.output_dir / "transfer_rank1.png")
     plot_cmc(
         args.output_dir / "cmc",
@@ -518,6 +594,10 @@ def main() -> None:
         "mars",
         args.output_dir / "cmc_msmt_mars.png",
         "CMC on MARS (MSMT17-trained FastReID)",
+    )
+    snapshot_results(
+        PROJECT_ROOT / "results" / "comparison",
+        args.output_dir / "results",
     )
     write_markdown(rows, args.output_dir / "tables.md")
     print(f"Wrote plots to {args.output_dir}")

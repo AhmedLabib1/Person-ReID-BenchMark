@@ -26,7 +26,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--datasets",
         nargs="+",
-        default=["market1501", "mars"],
+        default=["market1501", "mars", "msmt17"],
+        help="market1501, mars, and/or msmt17.",
     )
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--batch-size", type=int, default=32)

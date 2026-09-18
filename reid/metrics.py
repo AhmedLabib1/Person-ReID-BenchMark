@@ -37,7 +37,7 @@ def evaluate_rank(
     as percentages.
     """
 
-    cmc, all_ap, all_inp = _eval_market1501(
+    all_cmc, all_ap, all_inp = _eval_market1501(
         distmat=distmat,
         query_pids=query_pids,
         gallery_pids=gallery_pids,
@@ -45,7 +45,59 @@ def evaluate_rank(
         gallery_camids=gallery_camids,
         max_rank=max_rank,
     )
+    return _summarize_rank(all_cmc, all_ap, all_inp, max_rank)
 
+
+def evaluate_rank_from_features(
+    query_features: np.ndarray,
+    gallery_features: np.ndarray,
+    query_pids: np.ndarray,
+    gallery_pids: np.ndarray,
+    query_camids: np.ndarray,
+    gallery_camids: np.ndarray,
+    max_rank: int = 50,
+    query_chunk: int = 256,
+) -> dict[str, float]:
+    """
+    Same CMC / mAP as evaluate_rank, without materializing the full
+    distance matrix. MSMT17 is ~11k x 82k; a dense distmat would be ~4 GB.
+    """
+
+    query = _l2_normalize(query_features)
+    gallery = _l2_normalize(gallery_features)
+    all_cmc: list[np.ndarray] = []
+    all_ap: list[float] = []
+    all_inp: list[float] = []
+    num_query = int(query.shape[0])
+    chunk = max(int(query_chunk), 1)
+
+    for start in range(0, num_query, chunk):
+        end = min(start + chunk, num_query)
+        distmat = (1.0 - query[start:end] @ gallery.T).astype(np.float32)
+        chunk_cmc, chunk_ap, chunk_inp = _eval_market1501(
+            distmat=distmat,
+            query_pids=query_pids[start:end],
+            gallery_pids=gallery_pids,
+            query_camids=query_camids[start:end],
+            gallery_camids=gallery_camids,
+            max_rank=max_rank,
+        )
+        all_cmc.extend(chunk_cmc)
+        all_ap.extend(chunk_ap)
+        all_inp.extend(chunk_inp)
+
+    return _summarize_rank(all_cmc, all_ap, all_inp, max_rank)
+
+
+def _summarize_rank(
+    all_cmc: list[np.ndarray],
+    all_ap: list[float],
+    all_inp: list[float],
+    max_rank: int,
+) -> dict[str, float]:
+    if not all_ap:
+        raise RuntimeError("All query identities are missing from the gallery.")
+    cmc = np.asarray(all_cmc, dtype=np.float32).sum(axis=0) / float(len(all_ap))
     return {
         "Rank-1": float(cmc[0] * 100.0),
         "Rank-5": float(cmc[min(4, len(cmc) - 1)] * 100.0),
@@ -92,7 +144,7 @@ def _eval_market1501(
     query_camids: np.ndarray,
     gallery_camids: np.ndarray,
     max_rank: int,
-) -> tuple[np.ndarray, list[float], list[float]]:
+) -> tuple[list[np.ndarray], list[float], list[float]]:
     num_query, num_gallery = distmat.shape
     if num_gallery < max_rank:
         max_rank = num_gallery
@@ -140,6 +192,6 @@ def _eval_market1501(
             "All query identities are missing from the gallery."
         )
 
-    all_cmc_arr = np.asarray(all_cmc, dtype=np.float32)
-    cmc = all_cmc_arr.sum(axis=0) / num_valid_q
-    return cmc, all_ap, all_inp
+    if num_valid_q == 0:
+        return [], [], []
+    return all_cmc, all_ap, all_inp

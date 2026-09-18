@@ -9,8 +9,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from reid.data import MarsDataset
-from reid.data.market1501 import Market1501Dataset
+from reid.data import MSMT17Dataset, MarsDataset, Market1501Dataset
 from reid.eval_loop import evaluate_encoder
 from reid.metrics import format_metrics
 from reid.models.registry import all_specs, build_encoder
@@ -19,13 +18,13 @@ from reid.profiling import format_efficiency
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Evaluate a registered pretrained encoder on Market1501 or MARS."
+        description="Evaluate a registered pretrained encoder on Market1501, MARS, or MSMT17."
     )
     parser.add_argument("--model", required=True, choices=sorted(all_specs()))
     parser.add_argument(
         "--dataset",
         required=True,
-        choices=["market1501", "mars"],
+        choices=["market1501", "mars", "msmt17"],
     )
     parser.add_argument(
         "--data-root",
@@ -44,12 +43,16 @@ def parse_args() -> argparse.Namespace:
 def default_root(dataset: str) -> Path:
     if dataset == "mars":
         return PROJECT_ROOT / "datasets" / "MARS"
+    if dataset == "msmt17":
+        return PROJECT_ROOT / "datasets"
     return PROJECT_ROOT / "datasets" / "Market-1501-v15.09.15"
 
 
 def load_splits(dataset: str, root: Path):
     if dataset == "mars":
         return MarsDataset(root).load(include_train=False)
+    if dataset == "msmt17":
+        return MSMT17Dataset(root).load()
     return Market1501Dataset(root).load()
 
 
