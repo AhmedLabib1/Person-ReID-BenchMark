@@ -1,0 +1,173 @@
+version: 1
+
+benchmark_name: fastreid_dukemtmc_pretrained
+
+source_dataset: DukeMTMC
+
+fastreid_root: third_party/fast-reid
+
+checkpoint_root: checkpoints/fastreid/dukemtmc
+
+models:
+
+  # ============================================================
+  # BoT
+  # ============================================================
+
+  - id: bot_r50
+    family: BoT
+    backbone: R50
+    config: configs/DukeMTMC/bagtricks_R50.yml
+    checkpoint: duke_bot_R50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_bot_R50.pth
+    official_dukemtmc:
+      rank1: 87.2
+      map: 77.0
+      minp: 42.1
+
+  - id: bot_r50_ibn
+    family: BoT
+    backbone: R50-IBN
+    config: configs/DukeMTMC/bagtricks_R50-ibn.yml
+    checkpoint: duke_bot_R50-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_bot_R50-ibn.pth
+    official_dukemtmc:
+      rank1: 89.3
+      map: 79.6
+      minp: 45.2
+
+  - id: bot_s50
+    family: BoT
+    backbone: S50
+    config: configs/DukeMTMC/bagtricks_S50.yml
+    checkpoint: duke_bot_S50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_bot_S50.pth
+    official_dukemtmc:
+      rank1: 90.0
+      map: 80.13
+      minp: 45.8
+
+  - id: bot_r101_ibn
+    family: BoT
+    backbone: R101-IBN
+    config: configs/DukeMTMC/bagtricks_R101-ibn.yml
+    checkpoint: duke_bot_R101-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_bot_R101-ibn.pth
+    official_dukemtmc:
+      rank1: 91.2
+      map: 81.2
+      minp: 47.5
+
+
+  # ============================================================
+  # AGW
+  # ============================================================
+
+  - id: agw_r50
+    family: AGW
+    backbone: R50
+    config: configs/DukeMTMC/AGW_R50.yml
+    checkpoint: duke_agw_R50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_agw_R50.pth
+    official_dukemtmc:
+      rank1: 89.0
+      map: 79.9
+      minp: 46.1
+
+  - id: agw_r50_ibn
+    family: AGW
+    backbone: R50-IBN
+    config: configs/DukeMTMC/AGW_R50-ibn.yml
+    checkpoint: duke_agw_R50-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_agw_R50-ibn.pth
+    official_dukemtmc:
+      rank1: 90.5
+      map: 80.8
+      minp: 47.6
+
+  - id: agw_s50
+    family: AGW
+    backbone: S50
+    config: configs/DukeMTMC/AGW_S50.yml
+    checkpoint: duke_agw_S50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_agw_S50.pth
+    official_dukemtmc:
+      rank1: 90.9
+      map: 82.4
+      minp: 49.2
+
+  - id: agw_r101_ibn
+    family: AGW
+    backbone: R101-IBN
+    config: configs/DukeMTMC/AGW_R101-ibn.yml
+    checkpoint: duke_agw_R101-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_agw_R101-ibn.pth
+    official_dukemtmc:
+      rank1: 91.7
+      map: 82.3
+      minp: 50.0
+
+
+  # ============================================================
+  # SBS
+  # ============================================================
+
+  - id: sbs_r50
+    family: SBS
+    backbone: R50
+    config: configs/DukeMTMC/sbs_R50.yml
+    checkpoint: duke_sbs_R50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_sbs_R50.pth
+    official_dukemtmc:
+      rank1: 90.3
+      map: 80.3
+      minp: 46.5
+
+  - id: sbs_r50_ibn
+    family: SBS
+    backbone: R50-IBN
+    config: configs/DukeMTMC/sbs_R50-ibn.yml
+    checkpoint: duke_sbs_R50-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_sbs_R50-ibn.pth
+    official_dukemtmc:
+      rank1: 90.8
+      map: 81.2
+      minp: 47.0
+
+  - id: sbs_s50
+    family: SBS
+    backbone: S50
+    config: configs/DukeMTMC/sbs_S50.yml
+    checkpoint: duke_sbs_S50.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_sbs_S50.pth
+    official_dukemtmc:
+      rank1: 91.0
+      map: 81.4
+      minp: 47.6
+
+  - id: sbs_r101_ibn
+    family: SBS
+    backbone: R101-IBN
+    config: configs/DukeMTMC/sbs_R101-ibn.yml
+    checkpoint: duke_sbs_R101-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_sbs_R101-ibn.pth
+    official_dukemtmc:
+      rank1: 91.9
+      map: 83.6
+      minp: 51.5
+
+
+  # ============================================================
+  # MGN
+  # ============================================================
+
+  - id: mgn_r50_ibn
+    family: MGN
+    backbone: R50-IBN
+    config: configs/DukeMTMC/mgn_R50-ibn.yml
+    checkpoint: duke_mgn_R50-ibn.pth
+    download_url: https://github.com/JDAI-CV/fast-reid/releases/download/v0.1.1/duke_mgn_R50-ibn.pth
+    official_dukemtmc:
+      rank1: 91.1
+      map: 82.0
+      minp: 46.8

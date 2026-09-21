@@ -1,0 +1,40 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Package/build files
+*.egg-info/
+build/
+dist/
+
+# Environment files
+.env
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Datasets
+data/
+
+# Model checkpoints
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+
+# Generated embeddings
+benchmarks/embeddings/
+
+# External FastReID repo
+third_party/fast-reid/
+
+# Temporary files
+*.log
+*.tmp
