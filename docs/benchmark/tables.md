@@ -35,6 +35,24 @@
 | FastReID AGW-S50 (MSMT17) | MSMT17 | 43.56 | 19.82 | 2.28 | 26.47 | 23.00 | 13.81 | — | — | — |
 | FastReID AGW-R50 (MSMT17) | MSMT17 | 43.53 | 21.61 | 3.49 | 28.42 | 23.25 | 13.95 | — | — | — |
 
+### Cross-domain (DukeMTMC weights, no fine-tune)
+
+| Model | Trained on | Market Rank-1 | Market mAP | Market mINP | MARS Rank-1 | MARS mAP | MARS mINP | MSMT Rank-1 | MSMT mAP | MSMT mINP |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| FastReID SBS-R101-IBN (DukeMTMC) | DukeMTMC | 62.14 | 31.48 | 3.38 | 51.63 | 34.36 | 11.63 | 22.54 | 7.22 | 0.18 |
+| FastReID MGN-R50-IBN (DukeMTMC) | DukeMTMC | 59.65 | 26.31 | 1.76 | 45.82 | 26.44 | 7.91 | 23.64 | 6.95 | 0.10 |
+| FastReID SBS-S50 (DukeMTMC) | DukeMTMC | 59.62 | 28.94 | 2.94 | 52.88 | 35.28 | 12.06 | 21.23 | 6.63 | 0.16 |
+| FastReID SBS-R50-IBN (DukeMTMC) | DukeMTMC | 58.76 | 28.71 | 3.24 | 53.80 | 36.25 | 13.00 | 21.78 | 6.98 | 0.16 |
+| FastReID SBS-R50 (DukeMTMC) | DukeMTMC | 56.12 | 26.47 | 2.51 | 47.83 | 30.67 | 10.09 | 19.09 | 5.90 | 0.12 |
+| FastReID BoT-R101-IBN (DukeMTMC) | DukeMTMC | 51.57 | 24.24 | 2.89 | 42.39 | 26.79 | 8.54 | 13.71 | 4.22 | 0.11 |
+| FastReID AGW-S50 (DukeMTMC) | DukeMTMC | 49.38 | 22.25 | 2.24 | 45.54 | 28.54 | 9.42 | 15.93 | 4.63 | 0.13 |
+| FastReID AGW-R101-IBN (DukeMTMC) | DukeMTMC | 49.11 | 24.31 | 3.40 | 42.88 | 27.95 | 9.07 | 12.93 | 4.03 | 0.13 |
+| FastReID BoT-S50 (DukeMTMC) | DukeMTMC | 48.96 | 21.58 | 2.17 | 40.43 | 24.86 | 8.03 | 16.49 | 4.95 | 0.14 |
+| FastReID AGW-R50-IBN (DukeMTMC) | DukeMTMC | 48.81 | 23.52 | 2.95 | 45.16 | 28.92 | 9.58 | 13.48 | 4.10 | 0.13 |
+| FastReID BoT-R50-IBN (DukeMTMC) | DukeMTMC | 46.62 | 21.47 | 2.58 | 41.74 | 25.73 | 8.14 | 13.35 | 4.15 | 0.12 |
+| FastReID AGW-R50 (DukeMTMC) | DukeMTMC | 45.69 | 21.91 | 2.89 | 40.76 | 26.17 | 8.62 | 11.97 | 3.74 | 0.13 |
+| FastReID BoT-R50 (DukeMTMC) | DukeMTMC | 44.48 | 19.29 | 1.96 | 35.76 | 21.79 | 6.83 | 10.71 | 3.17 | 0.12 |
+
 ### Market1501 CMC + mAP (Market1501-trained + foundation)
 
 | Model | Rank-1 | Rank-5 | Rank-10 | Rank-20 | mAP | mINP |
@@ -71,6 +89,24 @@
 | FastReID BoT-R50 (MSMT17) | 43.68 | 62.23 | 70.19 | — | 20.96 | 3.20 |
 | FastReID AGW-S50 (MSMT17) | 43.56 | 63.66 | 71.26 | — | 19.82 | 2.28 |
 | FastReID AGW-R50 (MSMT17) | 43.53 | 63.27 | 70.25 | — | 21.61 | 3.49 |
+
+### Market1501 CMC + mAP (DukeMTMC-trained)
+
+| Model | Rank-1 | Rank-5 | Rank-10 | Rank-20 | mAP | mINP |
+|---|---:|---:|---:|---:|---:|---:|
+| FastReID SBS-R101-IBN (DukeMTMC) | 62.14 | 77.67 | 82.78 | 87.20 | 31.48 | 3.38 |
+| FastReID MGN-R50-IBN (DukeMTMC) | 59.65 | 76.25 | 82.24 | 87.56 | 26.31 | 1.76 |
+| FastReID SBS-S50 (DukeMTMC) | 59.62 | 74.44 | 79.39 | 85.42 | 28.94 | 2.94 |
+| FastReID SBS-R50-IBN (DukeMTMC) | 58.76 | 74.61 | 80.58 | 85.18 | 28.71 | 3.24 |
+| FastReID SBS-R50 (DukeMTMC) | 56.12 | 73.16 | 79.10 | 83.61 | 26.47 | 2.51 |
+| FastReID BoT-R101-IBN (DukeMTMC) | 51.57 | 67.61 | 74.85 | 80.02 | 24.24 | 2.89 |
+| FastReID AGW-S50 (DukeMTMC) | 49.38 | 66.69 | 72.57 | 78.74 | 22.25 | 2.24 |
+| FastReID AGW-R101-IBN (DukeMTMC) | 49.11 | 66.60 | 73.49 | 79.75 | 24.31 | 3.40 |
+| FastReID BoT-S50 (DukeMTMC) | 48.96 | 65.41 | 71.88 | 78.56 | 21.58 | 2.17 |
+| FastReID AGW-R50-IBN (DukeMTMC) | 48.81 | 66.36 | 74.11 | 80.14 | 23.52 | 2.95 |
+| FastReID BoT-R50-IBN (DukeMTMC) | 46.62 | 63.87 | 70.81 | 77.79 | 21.47 | 2.58 |
+| FastReID AGW-R50 (DukeMTMC) | 45.69 | 63.54 | 71.02 | 77.79 | 21.91 | 2.89 |
+| FastReID BoT-R50 (DukeMTMC) | 44.48 | 61.16 | 68.17 | 75.12 | 19.29 | 1.96 |
 
 ### MARS CMC + mAP (Market1501-trained + foundation)
 
@@ -109,6 +145,24 @@
 | FastReID AGW-S50 (MSMT17) | 26.47 | 49.78 | 57.23 | — | 23.00 | 13.81 |
 | FastReID AGW-R50 (MSMT17) | 28.42 | 48.75 | 56.52 | — | 23.25 | 13.95 |
 
+### MARS CMC + mAP (DukeMTMC-trained)
+
+| Model | Rank-1 | Rank-5 | Rank-10 | Rank-20 | mAP | mINP |
+|---|---:|---:|---:|---:|---:|---:|
+| FastReID SBS-R101-IBN (DukeMTMC) | 51.63 | 65.98 | 70.38 | 74.84 | 34.36 | 11.63 |
+| FastReID MGN-R50-IBN (DukeMTMC) | 45.82 | 59.78 | 65.05 | 70.27 | 26.44 | 7.91 |
+| FastReID SBS-S50 (DukeMTMC) | 52.88 | 66.85 | 72.23 | 76.90 | 35.28 | 12.06 |
+| FastReID SBS-R50-IBN (DukeMTMC) | 53.80 | 68.15 | 74.13 | 79.08 | 36.25 | 13.00 |
+| FastReID SBS-R50 (DukeMTMC) | 47.83 | 61.63 | 67.01 | 72.34 | 30.67 | 10.09 |
+| FastReID BoT-R101-IBN (DukeMTMC) | 42.39 | 56.96 | 62.93 | 68.53 | 26.79 | 8.54 |
+| FastReID AGW-S50 (DukeMTMC) | 45.54 | 59.13 | 65.22 | 70.60 | 28.54 | 9.42 |
+| FastReID AGW-R101-IBN (DukeMTMC) | 42.88 | 57.17 | 62.99 | 69.29 | 27.95 | 9.07 |
+| FastReID BoT-S50 (DukeMTMC) | 40.43 | 54.84 | 60.49 | 66.25 | 24.86 | 8.03 |
+| FastReID AGW-R50-IBN (DukeMTMC) | 45.16 | 59.89 | 64.95 | 70.60 | 28.92 | 9.58 |
+| FastReID BoT-R50-IBN (DukeMTMC) | 41.74 | 56.03 | 61.63 | 67.01 | 25.73 | 8.14 |
+| FastReID AGW-R50 (DukeMTMC) | 40.76 | 55.27 | 62.99 | 69.57 | 26.17 | 8.62 |
+| FastReID BoT-R50 (DukeMTMC) | 35.76 | 50.11 | 55.65 | 61.58 | 21.79 | 6.83 |
+
 ### MSMT17 CMC + mAP (Market1501-trained + foundation)
 
 | Model | Rank-1 | Rank-5 | Rank-10 | Rank-20 | mAP | mINP |
@@ -128,6 +182,24 @@
 | FastReID BoT-R50 | 7.47 | 13.23 | 16.38 | 20.55 | 2.35 | 0.12 |
 | SigLIP ViT-B/16 | 24.40 | 36.83 | 42.37 | 48.39 | 6.33 | 0.12 |
 | OpenCLIP ViT-B/32 | 4.74 | 10.00 | 13.51 | 18.47 | 1.02 | 0.05 |
+
+### MSMT17 CMC + mAP (DukeMTMC-trained)
+
+| Model | Rank-1 | Rank-5 | Rank-10 | Rank-20 | mAP | mINP |
+|---|---:|---:|---:|---:|---:|---:|
+| FastReID SBS-R101-IBN (DukeMTMC) | 22.54 | 33.98 | 39.73 | 45.63 | 7.22 | 0.18 |
+| FastReID MGN-R50-IBN (DukeMTMC) | 23.64 | 35.07 | 40.40 | 46.19 | 6.95 | 0.10 |
+| FastReID SBS-S50 (DukeMTMC) | 21.23 | 31.97 | 37.73 | 43.38 | 6.63 | 0.16 |
+| FastReID SBS-R50-IBN (DukeMTMC) | 21.78 | 33.22 | 39.05 | 45.08 | 6.98 | 0.16 |
+| FastReID SBS-R50 (DukeMTMC) | 19.09 | 29.36 | 34.53 | 40.14 | 5.90 | 0.12 |
+| FastReID BoT-R101-IBN (DukeMTMC) | 13.71 | 23.85 | 28.83 | 35.02 | 4.22 | 0.11 |
+| FastReID AGW-S50 (DukeMTMC) | 15.93 | 25.80 | 31.13 | 37.23 | 4.63 | 0.13 |
+| FastReID AGW-R101-IBN (DukeMTMC) | 12.93 | 21.68 | 26.60 | 32.53 | 4.03 | 0.13 |
+| FastReID BoT-S50 (DukeMTMC) | 16.49 | 26.69 | 32.18 | 38.09 | 4.95 | 0.14 |
+| FastReID AGW-R50-IBN (DukeMTMC) | 13.48 | 22.47 | 27.84 | 33.61 | 4.10 | 0.13 |
+| FastReID BoT-R50-IBN (DukeMTMC) | 13.35 | 22.72 | 28.07 | 33.91 | 4.15 | 0.12 |
+| FastReID AGW-R50 (DukeMTMC) | 11.97 | 21.05 | 25.95 | 31.63 | 3.74 | 0.13 |
+| FastReID BoT-R50 (DukeMTMC) | 10.71 | 19.04 | 23.49 | 28.66 | 3.17 | 0.12 |
 
 ### Compute (CUDA-event protocol, Market1501 extract)
 
@@ -149,6 +221,8 @@
 | FastReID SBS-S50 | 25.4 | 97.3 | 97.4 | 547.4 | 5.69 | 175.7 |
 | SigLIP ViT-B/16 | 92.9 | 354.3 | 354.3 | 622.3 | 6.84 | 146.2 |
 
-Not in this bench (on purpose): DukeMTMC zoo, vehicle ReID,
-FastReID ViT (no zoo `.pth`), newer non-FastReID models
-(SOLIDER, CLIP-ReID, CLIMB-ReID).
+Not in this bench (on purpose): vehicle ReID, FastReID ViT
+(no zoo `.pth`), newer non-FastReID models (SOLIDER, CLIP-ReID,
+CLIMB-ReID). DukeMTMC images are not evaluated in-domain
+(dataset withdrawn); Duke-trained zoo weights are imported as
+cross-domain transfer only.

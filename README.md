@@ -44,7 +44,8 @@ Person-ReID-BenchMark/
     ├── eval_encoder.py
     ├── run_comparison.py
     ├── plot_comparison.py
-    └── import_v2_results.py
+    ├── import_v2_results.py
+    └── import_duke_results.py
 ```
 ---
 
@@ -79,16 +80,17 @@ Every encoder is frozen (no extra training). The same SHAWAF ranking is used eve
 | **MARS** | 8-frame mean-pool + L2 | 1980 / 9330 (1840 valid) | Tracklets, **same campus** as Market |
 | **MSMT17 V1** | 1 crop / image | 11659 / 82161 | **Hard camera / scene shift** (15 cams, indoor+outdoor) |
 
-MSMT17 V1 pixels are unblurred. FastReID’s MSMT zoo was trained on **V2** (blurred faces). Protocol matches; pixels do not.
+MSMT17 V1 pixels are unblurred. FastReID’s MSMT zoo was trained on **V2** (blurred faces). Protocol matches; pixels do not. Duke-trained MSMT numbers below are **V2** (teammate eval); Market-trained MSMT numbers are **V1** (measured here).
 
-Full CMC (Rank-1/5/10/20, mAP, mINP) lives in [`docs/benchmark/tables.md`](docs/benchmark/tables.md). JSON: `docs/benchmark/results/` and `results/comparison/`. GPU: RTX 5070 Laptop 8 GB, `crowd-gpu`.
+Full CMC (Rank-1/5/10/20, mAP, mINP) lives in [`docs/benchmark/tables.md`](docs/benchmark/tables.md). JSON: `docs/benchmark/results/` and `results/comparison/`. GPU: RTX 5070 Laptop 8 GB, `crowd-gpu` (our measured runs). Imported Duke/MSMT efficiency is Tesla T4 and is not mixed into the compute table.
 
-There are **two train sets**. Do not mix them.
+There are **three train sets**. Do not mix them.
 
 | Train set | In-domain eval | Cross-domain eval | Status |
 |---|---|---|---|
 | **Market1501 zoo** (+ CLIP/SigLIP baselines) | Market1501 | MARS (same campus) and MSMT17 V1 (hard) | **Measured here** |
 | **MSMT17 zoo** | MSMT17 | Market1501 and MARS | Transfer **imported**; **in-domain MSMT17 V1 not run** |
+| **DukeMTMC zoo** | DukeMTMC | Market1501, MARS, and MSMT17 V2 | Transfer **imported**; **in-domain Duke not run** (dataset withdrawn) |
 
 ---
 
@@ -186,15 +188,50 @@ CMC extras: [Rank-5](docs/benchmark/rank5_msmt.png) · [Rank-10](docs/benchmark/
 
 ---
 
-## 3. Same recipe, different train set
+## 3. Trained on DukeMTMC — transfer only (in-domain Duke not run)
 
-SBS / AGW / BoT R50 trained on Market vs trained on MSMT, then evaluated on Market and on MARS. This is the head-to-head transfer plot.
+FastReID Duke zoo (`duke_*.pth`), **no fine-tune**. Numbers imported from `feature/DukeMTMC-Benchmark` after matching Market/MARS split sizes and CMC protocol. Rank-20 is stored from the CMC curve.
 
-![Train on Market vs train on MSMT](docs/benchmark/transfer_rank1.png)
+- **In-domain DukeMTMC:** not in this bench. The image set was withdrawn; we do not evaluate on Duke images. Official FastReID zoo cards (not SHAWAF protocol) are ~87–92 Rank-1 on Duke.
+- **Cross-domain Market:** ~44–62 Rank-1 — the same band as MSMT-trained → Market.
+- **Cross-domain MARS:** ~36–54 Rank-1 — **stronger** than MSMT-trained → MARS (~26–29).
+- **Cross-domain MSMT17 V2:** ~11–24 Rank-1 / ~3–7 mAP. This MSMT column is **V2** (11658 query / 82160 gallery; one unreadable image skipped). It is not the same pixel set as the Market-trained V1 column above.
 
-On R50: Market train → Market eval ~95 Rank-1; MSMT train → Market eval ~44–60 Rank-1. MARS stays high only if the model was trained on Market (same campus).
+Best on this import: SBS-R101-IBN Market Rank-1 **62.14**; SBS-R50-IBN MARS Rank-1 **53.80** / mAP **36.25**; MGN-R50-IBN MSMT Rank-1 **23.64**.
 
-Not in this bench on purpose: DukeMTMC zoo (dataset withdrawn), vehicle ReID, FastReID ViT (no zoo `.pth`), newer non-FastReID models (SOLIDER, CLIP-ReID).
+![Rank-1, Duke-trained → Market / MARS / MSMT V2](docs/benchmark/rank1_duke.png)
+
+![mAP, Duke-trained → Market / MARS / MSMT V2](docs/benchmark/map_duke.png)
+
+CMC extras: [Rank-5](docs/benchmark/rank5_duke.png) · [Rank-10](docs/benchmark/rank10_duke.png) · [Rank-20](docs/benchmark/rank20_duke.png) · [mINP](docs/benchmark/minp_duke.png) · [CMC Market](docs/benchmark/cmc_duke_market1501.png) · [CMC MARS](docs/benchmark/cmc_duke_mars.png) · [CMC MSMT V2](docs/benchmark/cmc_duke_msmt17.png)
+
+| Model | Duke in-domain | Market R1 | Market mAP | MARS R1 | MARS mAP | MSMT V2 R1 | MSMT V2 mAP |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| SBS-R101-IBN | — | **62.14** | **31.48** | 51.63 | 34.36 | 22.54 | **7.22** |
+| MGN-R50-IBN | — | 59.65 | 26.31 | 45.82 | 26.44 | **23.64** | 6.95 |
+| SBS-S50 | — | 59.62 | 28.94 | 52.88 | 35.28 | 21.23 | 6.63 |
+| SBS-R50-IBN | — | 58.76 | 28.71 | **53.80** | **36.25** | 21.78 | 6.98 |
+| SBS-R50 | — | 56.12 | 26.47 | 47.83 | 30.67 | 19.09 | 5.90 |
+| BoT-R101-IBN | — | 51.57 | 24.24 | 42.39 | 26.79 | 13.71 | 4.22 |
+| AGW-S50 | — | 49.38 | 22.25 | 45.54 | 28.54 | 15.93 | 4.63 |
+| AGW-R101-IBN | — | 49.11 | 24.31 | 42.88 | 27.95 | 12.93 | 4.03 |
+| BoT-S50 | — | 48.96 | 21.58 | 40.43 | 24.86 | 16.49 | 4.95 |
+| AGW-R50-IBN | — | 48.81 | 23.52 | 45.16 | 28.92 | 13.48 | 4.10 |
+| BoT-R50-IBN | — | 46.62 | 21.47 | 41.74 | 25.73 | 13.35 | 4.15 |
+| AGW-R50 | — | 45.69 | 21.91 | 40.76 | 26.17 | 11.97 | 3.74 |
+| BoT-R50 | — | 44.48 | 19.29 | 35.76 | 21.79 | 10.71 | 3.17 |
+
+---
+
+## 4. Same recipe, different train set
+
+SBS / AGW / BoT R50 trained on Market vs MSMT vs Duke, then evaluated on Market and on MARS.
+
+![Train on Market vs MSMT vs Duke](docs/benchmark/transfer_rank1.png)
+
+On R50: Market train → Market eval ~95 Rank-1. MSMT or Duke train → Market eval ~44–62 Rank-1. MARS stays high only if the model was trained on Market (same campus). Duke→MARS is the next best of the three transfers.
+
+Not in this bench on purpose: vehicle ReID, FastReID ViT (no zoo `.pth`), newer non-FastReID models (SOLIDER, CLIP-ReID). Duke images are not used as an eval set.
 
 ## How to run
 
@@ -203,7 +240,8 @@ Activate `crowd-gpu` first. JSON is written to `results/comparison/{model}_{data
 `--dataset` is `market1501`, `mars`, or `msmt17`.
 
 **Measured Market-trained keys:** `sbs_r50`, `sbs_r50_ibn`, `sbs_s50`, `sbs_r101_ibn`, `bot_r50`, `bot_r50_ibn`, `bot_s50`, `bot_r101_ibn`, `agw_r50`, `agw_r50_ibn`, `agw_s50`, `agw_r101_ibn`, `mgn_r50_ibn`, `siglip_base`, `openclip_vitb32`  
-**Imported MSMT17-trained keys:** `msmt_sbs_r50`, `msmt_sbs_r50_ibn`, `msmt_sbs_s50`, `msmt_sbs_r101_ibn`, and the same pattern for `bot` / `agw`
+**Imported MSMT17-trained keys:** `msmt_sbs_r50`, `msmt_sbs_r50_ibn`, `msmt_sbs_s50`, `msmt_sbs_r101_ibn`, and the same pattern for `bot` / `agw`  
+**Imported DukeMTMC-trained keys:** `duke_sbs_r50`, `duke_sbs_r50_ibn`, `duke_sbs_s50`, `duke_sbs_r101_ibn`, the same pattern for `bot` / `agw`, plus `duke_mgn_r50_ibn`
 
 ### One model
 
@@ -246,6 +284,13 @@ Re-import teammate MSMT17 JSON/CMC into `docs/benchmark/results/`:
 
 ```bash
 python scripts/import_v2_results.py
+python scripts/plot_comparison.py
+```
+
+Re-import teammate DukeMTMC JSON/CMC:
+
+```bash
+python scripts/import_duke_results.py
 python scripts/plot_comparison.py
 ```
 

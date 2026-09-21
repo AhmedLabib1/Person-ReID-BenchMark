@@ -36,7 +36,7 @@ def _fastreid(
     key: str,
     label: str,
     family: FamilyName,
-    trained_on: Literal["Market1501", "MSMT17"],
+    trained_on: Literal["Market1501", "MSMT17", "DukeMTMC"],
     color: str,
     config_file: Path,
     weight_name: str,
@@ -63,6 +63,7 @@ def _fastreid(
 def all_specs() -> dict[str, ModelSpec]:
     market = FASTREID_ROOT / "Market1501"
     msmt = FASTREID_ROOT / "MSMT17"
+    duke = FASTREID_ROOT / "DukeMTMC"
 
     families = [
         ("sbs", "SBS", "sbs", "Stronger BoT (circle loss, GeM, non-local)"),
@@ -102,6 +103,21 @@ def all_specs() -> dict[str, ModelSpec]:
         "msmt_agw_r50_ibn": "#f43f5e",
         "msmt_agw_s50": "#e11d48",
         "msmt_agw_r101_ibn": "#be123c",
+    }
+    duke_colors = {
+        "duke_sbs_r50": "#65a30d",
+        "duke_sbs_r50_ibn": "#4d7c0f",
+        "duke_sbs_s50": "#3f6212",
+        "duke_sbs_r101_ibn": "#365314",
+        "duke_bot_r50": "#ca8a04",
+        "duke_bot_r50_ibn": "#a16207",
+        "duke_bot_s50": "#854d0e",
+        "duke_bot_r101_ibn": "#713f12",
+        "duke_agw_r50": "#f97316",
+        "duke_agw_r50_ibn": "#ea580c",
+        "duke_agw_s50": "#c2410c",
+        "duke_agw_r101_ibn": "#9a3412",
+        "duke_mgn_r50_ibn": "#0f766e",
     }
     measured_market = {
         f"{family}_{backbone}"
@@ -147,6 +163,22 @@ def all_specs() -> dict[str, ModelSpec]:
                 result_status="imported",
             )
 
+            duke_key = f"duke_{family_key}_{backbone_key}"
+            specs[duke_key] = _fastreid(
+                key=duke_key,
+                label=f"FastReID {family_name}-{backbone_label} (DukeMTMC)",
+                family=family_name,
+                trained_on="DukeMTMC",
+                color=duke_colors[duke_key],
+                config_file=duke / yaml_name,
+                weight_name=f"duke_{weight_stem}.pth",
+                notes=(
+                    f"{notes}. Trained on DukeMTMC; eval on Market1501/MARS/MSMT17 "
+                    "(cross-domain). In-domain Duke not run (dataset withdrawn)."
+                ),
+                result_status="imported",
+            )
+
     specs["mgn_r50_ibn"] = _fastreid(
         key="mgn_r50_ibn",
         label="FastReID MGN-R50-IBN",
@@ -158,6 +190,20 @@ def all_specs() -> dict[str, ModelSpec]:
         notes="Multi-granularity network. No MSMT17 zoo checkpoint.",
         default_sweep=True,
         result_status="measured",
+    )
+    specs["duke_mgn_r50_ibn"] = _fastreid(
+        key="duke_mgn_r50_ibn",
+        label="FastReID MGN-R50-IBN (DukeMTMC)",
+        family="MGN",
+        trained_on="DukeMTMC",
+        color=duke_colors["duke_mgn_r50_ibn"],
+        config_file=duke / "mgn_R50-ibn.yml",
+        weight_name="duke_mgn_R50-ibn.pth",
+        notes=(
+            "Multi-granularity network. Trained on DukeMTMC; eval on "
+            "Market1501/MARS/MSMT17 (cross-domain)."
+        ),
+        result_status="imported",
     )
 
     specs["openclip_vitb32"] = ModelSpec(

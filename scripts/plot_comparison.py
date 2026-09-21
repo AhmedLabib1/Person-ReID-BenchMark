@@ -73,6 +73,26 @@ def _ours_gpu_protocol(row: dict) -> bool:
     return efficiency.get("source") is None
 
 
+def _short_label(spec) -> str:
+    return (
+        spec.label.replace("FastReID ", "")
+        .replace(" (MSMT17)", "")
+        .replace(" (DukeMTMC)", "")
+    )
+
+
+MARKET_TRAIN_SETS = {"Market1501", "LAION-2B", "WebLI"}
+
+
+def _cohort(rows: list[dict], specs: dict, trained_on: set[str]) -> list[dict]:
+    return [
+        row
+        for row in rows
+        if specs.get(str(row.get("model_key")))
+        and specs[str(row.get("model_key"))].trained_on in trained_on
+    ]
+
+
 def grouped_bars(
     rows: list[dict],
     datasets: list[str],
@@ -159,10 +179,7 @@ def grouped_bars(
 
     ax.set_xticks(x)
     ax.set_xticklabels(
-        [
-            specs[key].label.replace("FastReID ", "").replace(" (MSMT17)", "")
-            for key in models
-        ],
+        [_short_label(specs[key]) for key in models],
         rotation=rotate,
         ha="right",
     )
@@ -178,68 +195,64 @@ def grouped_bars(
 
 def transfer_bars(rows: list[dict], output: Path) -> None:
     pairs = [
-        ("sbs_r50", "msmt_sbs_r50", "SBS-R50"),
-        ("agw_r50", "msmt_agw_r50", "AGW-R50"),
-        ("bot_r50", "msmt_bot_r50", "BoT-R50"),
+        ("sbs_r50", "msmt_sbs_r50", "duke_sbs_r50", "SBS-R50"),
+        ("agw_r50", "msmt_agw_r50", "duke_agw_r50", "AGW-R50"),
+        ("bot_r50", "msmt_bot_r50", "duke_bot_r50", "BoT-R50"),
     ]
     datasets = ["market1501", "mars"]
-    fig, axes = plt.subplots(1, 2, figsize=(12.5, 5.4), sharey=True)
-    width = 0.36
+    fig, axes = plt.subplots(1, 2, figsize=(13.5, 5.6), sharey=True)
+    width = 0.24
+    series = (
+        (0, "Trained on Market1501", "#2563eb"),
+        (1, "Trained on MSMT17", "#ea580c"),
+        (2, "Trained on DukeMTMC", "#65a30d"),
+    )
     for ax, dataset, title in zip(
         axes,
         datasets,
         ("Eval on Market1501", "Eval on MARS"),
     ):
         x = np.arange(len(pairs))
-        in_domain = []
-        cross = []
-        for market_key, msmt_key, _label in pairs:
-            in_match = next(
-                (
-                    row
-                    for row in rows
-                    if row.get("model_key") == market_key
-                    and row.get("dataset") == dataset
-                ),
-                None,
+        values_by_train: list[list[float]] = []
+        for train_idx, _label, _color in series:
+            column: list[float] = []
+            for pair in pairs:
+                match = next(
+                    (
+                        row
+                        for row in rows
+                        if row.get("model_key") == pair[train_idx]
+                        and row.get("dataset") == dataset
+                    ),
+                    None,
+                )
+                column.append(_val(match, "metrics", "Rank-1"))
+            values_by_train.append(column)
+        offsets = (-width, 0.0, width)
+        for values, offset, (_idx, label, color) in zip(
+            values_by_train, offsets, series
+        ):
+            ax.bar(
+                x + offset,
+                values,
+                width,
+                label=label,
+                color=color,
+                edgecolor="white",
             )
-            cross_match = next(
-                (
-                    row
-                    for row in rows
-                    if row.get("model_key") == msmt_key and row.get("dataset") == dataset
-                ),
-                None,
-            )
-            in_domain.append(_val(in_match, "metrics", "Rank-1"))
-            cross.append(_val(cross_match, "metrics", "Rank-1"))
-        ax.bar(
-            x - width / 2,
-            in_domain,
-            width,
-            label="Trained on Market1501",
-            color="#2563eb",
-            edgecolor="white",
-        )
-        ax.bar(
-            x + width / 2,
-            cross,
-            width,
-            label="Trained on MSMT17",
-            color="#ea580c",
-            edgecolor="white",
-        )
-        for xpos, value in zip(x - width / 2, in_domain):
-            ax.text(xpos, value, f"{value:.1f}", ha="center", va="bottom", fontsize=8)
-        for xpos, value in zip(x + width / 2, cross):
-            ax.text(xpos, value, f"{value:.1f}", ha="center", va="bottom", fontsize=8)
+            for xpos, value in zip(x + offset, values):
+                if value <= 0:
+                    continue
+                ax.text(
+                    xpos, value, f"{value:.1f}", ha="center", va="bottom", fontsize=7
+                )
         ax.set_xticks(x)
-        ax.set_xticklabels([item[2] for item in pairs])
+        ax.set_xticklabels([item[3] for item in pairs])
         ax.set_title(title)
         ax.set_ylim(0, 105)
         ax.set_ylabel("Rank-1 (%)")
         ax.legend(fontsize=8)
-    fig.suptitle("Same R50 recipe: in-domain Market weights vs MSMT17 transfer")
+    fig.suptitle("Same R50 recipe: Market vs MSMT17 vs DukeMTMC train set")
     fig.tight_layout()
     fig.savefig(output, dpi=160)
     plt.close(fig)
@@ -276,9 +289,15 @@ def pareto(rows: list[dict], output: Path) -> None:
     plt.close(fig)
 
 
-def plot_cmc(cmc_dir: Path, dataset: str, output: Path, title: str) -> None:
+def plot_cmc(
+    cmc_dir: Path,
+    dataset: str,
+    output: Path,
+    title: str,
+    glob_prefix: str,
+) -> None:
     specs = all_specs()
-    paths = sorted(cmc_dir.glob(f"msmt_*_{dataset}.csv"))
+    paths = sorted(cmc_dir.glob(f"{glob_prefix}*_{dataset}.csv"))
     if not paths:
         return
     fig, ax = plt.subplots(figsize=(8.8, 5.6))
@@ -295,9 +314,7 @@ def plot_cmc(cmc_dir: Path, dataset: str, output: Path, title: str) -> None:
         ax.plot(
             ranks,
             values,
-            label=spec.label.replace("FastReID ", "").replace(" (MSMT17)", "")
-            if spec
-            else model_key,
+            label=_short_label(spec) if spec else model_key,
             color=spec.color if spec else None,
             linewidth=1.6,
         )
@@ -382,18 +399,9 @@ def snapshot_results(source: Path, dest: Path) -> None:
 
 def write_markdown(rows: list[dict], output: Path) -> None:
     specs = all_specs()
-    in_domain = [
-        row
-        for row in rows
-        if specs.get(str(row.get("model_key")))
-        and specs[str(row.get("model_key"))].trained_on != "MSMT17"
-    ]
-    cross = [
-        row
-        for row in rows
-        if specs.get(str(row.get("model_key")))
-        and specs[str(row.get("model_key"))].trained_on == "MSMT17"
-    ]
+    in_domain = _cohort(rows, specs, MARKET_TRAIN_SETS)
+    msmt_cross = _cohort(rows, specs, {"MSMT17"})
+    duke_cross = _cohort(rows, specs, {"DukeMTMC"})
 
     def summary_table(title: str, subset: list[dict]) -> list[str]:
         keys = _model_keys(subset, specs)
@@ -445,7 +453,12 @@ def write_markdown(rows: list[dict], output: Path) -> None:
     lines += [""]
     lines += summary_table(
         "Cross-domain (MSMT17 weights, no fine-tune)",
-        cross,
+        msmt_cross,
+    )
+    lines += [""]
+    lines += summary_table(
+        "Cross-domain (DukeMTMC weights, no fine-tune)",
+        duke_cross,
     )
     for dataset, label in DATASETS:
         for block in (
@@ -456,7 +469,12 @@ def write_markdown(rows: list[dict], output: Path) -> None:
             ),
             dataset_table(
                 f"{label} CMC + mAP (MSMT17-trained)",
-                cross,
+                msmt_cross,
+                dataset,
+            ),
+            dataset_table(
+                f"{label} CMC + mAP (DukeMTMC-trained)",
+                duke_cross,
                 dataset,
             ),
         ):
@@ -499,9 +517,11 @@ def write_markdown(rows: list[dict], output: Path) -> None:
     lines.extend(line for _speed, line in compute_rows)
     lines += [
         "",
-        "Not in this bench (on purpose): DukeMTMC zoo, vehicle ReID,",
-        "FastReID ViT (no zoo `.pth`), newer non-FastReID models",
-        "(SOLIDER, CLIP-ReID, CLIMB-ReID).",
+        "Not in this bench (on purpose): vehicle ReID, FastReID ViT",
+        "(no zoo `.pth`), newer non-FastReID models (SOLIDER, CLIP-ReID,",
+        "CLIMB-ReID). DukeMTMC images are not evaluated in-domain",
+        "(dataset withdrawn); Duke-trained zoo weights are imported as",
+        "cross-domain transfer only.",
         "",
     ]
     output.write_text("\n".join(lines), encoding="utf-8")
@@ -520,19 +540,10 @@ def main() -> None:
         plt.style.use("ggplot")
 
     specs = all_specs()
-    in_domain = [
-        row
-        for row in rows
-        if specs.get(str(row.get("model_key")))
-        and specs[str(row.get("model_key"))].trained_on != "MSMT17"
-    ]
+    in_domain = _cohort(rows, specs, MARKET_TRAIN_SETS)
     gpu_rows = [row for row in in_domain if _ours_gpu_protocol(row)]
-    cross = [
-        row
-        for row in rows
-        if specs.get(str(row.get("model_key")))
-        and specs[str(row.get("model_key"))].trained_on == "MSMT17"
-    ]
+    msmt_cross = _cohort(rows, specs, {"MSMT17"})
+    duke_cross = _cohort(rows, specs, {"DukeMTMC"})
 
     grouped_bars(
         gpu_rows,
@@ -571,30 +582,44 @@ def main() -> None:
             figsize=(16.0, 6.2),
         )
         grouped_bars(
-            cross,
+            msmt_cross,
             ["market1501", "mars", "msmt17"],
             lambda row, metric=metric: _val(row, "metrics", metric),
-            f"{metric} — MSMT17 weights (Market/MARS transfer, MSMT17 in-domain)",
+            f"{metric} — MSMT17 weights (Market/MARS transfer; MSMT in-domain not run)",
             ylabel,
             args.output_dir / f"{stem}_msmt.png",
             ylim=(0, 105),
             rotate=28,
             figsize=(15.0, 6.2),
         )
+        grouped_bars(
+            duke_cross,
+            ["market1501", "mars", "msmt17"],
+            lambda row, metric=metric: _val(row, "metrics", metric),
+            f"{metric} — DukeMTMC weights (Market / MARS / MSMT17 V2 transfer)",
+            ylabel,
+            args.output_dir / f"{stem}_duke.png",
+            ylim=(0, 105),
+            rotate=28,
+            figsize=(15.0, 6.2),
+        )
 
     transfer_bars(rows, args.output_dir / "transfer_rank1.png")
-    plot_cmc(
-        args.output_dir / "cmc",
-        "market1501",
-        args.output_dir / "cmc_msmt_market1501.png",
-        "CMC on Market1501 (MSMT17-trained FastReID)",
-    )
-    plot_cmc(
-        args.output_dir / "cmc",
-        "mars",
-        args.output_dir / "cmc_msmt_mars.png",
-        "CMC on MARS (MSMT17-trained FastReID)",
-    )
+    for dataset, stem, title in (
+        ("market1501", "cmc_msmt_market1501.png", "CMC on Market1501 (MSMT17-trained FastReID)"),
+        ("mars", "cmc_msmt_mars.png", "CMC on MARS (MSMT17-trained FastReID)"),
+        ("market1501", "cmc_duke_market1501.png", "CMC on Market1501 (DukeMTMC-trained FastReID)"),
+        ("mars", "cmc_duke_mars.png", "CMC on MARS (DukeMTMC-trained FastReID)"),
+        ("msmt17", "cmc_duke_msmt17.png", "CMC on MSMT17 V2 (DukeMTMC-trained FastReID)"),
+    ):
+        prefix = "duke_" if "duke" in stem else "msmt_"
+        plot_cmc(
+            args.output_dir / "cmc",
+            dataset,
+            args.output_dir / stem,
+            title,
+            prefix,
+        )
     snapshot_results(
         PROJECT_ROOT / "results" / "comparison",
         args.output_dir / "results",
