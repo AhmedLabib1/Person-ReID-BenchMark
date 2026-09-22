@@ -7,6 +7,7 @@ Duke images are not evaluated (dataset withdrawn).
 - [Market-trained](#market-trained)
 - [MSMT-trained](#msmt-trained)
 - [Duke-trained](#duke-trained)
+- [MOT / Dance / OSNet-AIN](#mot--dance--osnet-ain)
 - [Same recipe, three train sets](#same-recipe-three-train-sets)
 - [Compute](#compute)
 
@@ -77,6 +78,21 @@ Duke images are not evaluated (dataset withdrawn).
 | AGW-R50 | DukeMTMC | 45.69 | 21.91 | 2.89 | 40.76 | 26.17 | 8.62 | 11.97 | 3.74 | 0.13 |
 | BoT-R50 | DukeMTMC | 44.48 | 19.29 | 1.96 | 35.76 | 21.79 | 6.83 | 10.71 | 3.17 | 0.12 |
 
+## MOT / Dance / OSNet-AIN
+
+Appearance checkpoints used by Deep OC-SORT, scored with the same frozen ReID protocol (not MOT tracking). MOT17 / MOT20 / DanceTrack are FastReID SBS-S50; MOT half-val is OSNet-AIN x1.0 (MSMT17 + Duke + CUHK03).
+
+![Rank-1](figures/rank1_tracking.png)
+
+![mAP](figures/map_tracking.png)
+
+| Model | Train | Market R1 | Market mAP | Market mINP | MARS R1 | MARS mAP | MARS mINP | MSMT R1 | MSMT mAP | MSMT mINP |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| OSNet-AIN x1.0 (MS+D+C) | MSMT+Duke+CUHK03 | 73.13 | 45.82 | 12.50 | 64.95 | 49.50 | 22.80 | 76.19 | 48.76 | 8.69 |
+| SBS-S50 (MOT20) | MOT20 | 47.89 | 17.80 | 1.13 | 36.25 | 17.99 | 4.33 | 13.69 | 2.99 | 0.06 |
+| SBS-S50 (MOT17) | MOT17 | 29.48 | 10.27 | 0.73 | 28.64 | 15.39 | 4.24 | 9.00 | 2.19 | 0.07 |
+| SBS-S50 (DanceTrack) | DanceTrack | 10.30 | 3.11 | 0.21 | 20.16 | 10.52 | 2.21 | 2.41 | 0.52 | 0.04 |
+
 ## Same recipe, three train sets
 
 SBS / AGW / BoT R50 trained on Market vs MSMT vs Duke.
@@ -106,8 +122,12 @@ Imported Duke/MSMT efficiency is Tesla T4 and is not in this table.
 | AGW-R101-IBN | 42.6 | 162.9 | 163.2 | 391.4 | 2.39 | 417.6 |
 | BoT-R101-IBN | 42.5 | 162.5 | 162.8 | 382.9 | 2.40 | 416.6 |
 | SBS-R50 | 23.5 | 90.0 | 90.1 | 428.2 | 2.54 | 394.2 |
+| SBS-S50 (DanceTrack) | 25.4 | 97.3 | 97.4 | 322.4 | 2.87 | 348.2 |
+| SBS-S50 (MOT20) | 25.4 | 97.3 | 97.4 | 322.4 | 2.87 | 348.2 |
 | SBS-R50-IBN | 23.5 | 90.0 | 90.1 | 428.2 | 2.92 | 342.8 |
 | SBS-R101-IBN | 42.6 | 162.9 | 163.2 | 501.4 | 3.69 | 270.9 |
+| SBS-S50 (MOT17) | 25.4 | 97.3 | 97.4 | 322.4 | 3.71 | 269.8 |
+| OSNet-AIN x1.0 (MS+D+C) | 3.5 | 13.3 | 13.3 | 194.5 | 4.17 | 239.5 |
 | MGN-R50-IBN | 68.8 | 263.0 | 268.1 | 434.1 | 4.67 | 214.2 |
 | SBS-S50 | 25.4 | 97.3 | 97.4 | 547.4 | 5.69 | 175.7 |
 | SigLIP ViT-B/16 | 92.9 | 354.3 | 354.3 | 622.3 | 6.84 | 146.2 |

@@ -47,6 +47,7 @@ Same ranking everywhere: cosine on L2 features, same-pid + same-camera junk. No 
 | Market1501 (+ CLIP / SigLIP) | Market | MARS, MSMT V1 | Measured here |
 | MSMT17 | MSMT V2 | Market, MARS | Imported from `feature/fastreid-benchmark-v2` |
 | DukeMTMC | — (dataset withdrawn) | Market, MARS, MSMT V2 | Imported from `feature/DukeMTMC-Benchmark` |
+| MOT / Dance / MS+D+C | — | Market, MARS, MSMT V1 | Deep OC-SORT appearance (measured here) |
 
 ---
 
@@ -129,6 +130,25 @@ More graphs: [docs/benchmark/tables.md](./docs/benchmark/tables.md)
 
 ---
 
+## MOT / Dance / OSNet-AIN checkpoints
+
+Same frozen ReID protocol as above — not a MOT tracking eval. These are the appearance weights Deep OC-SORT loads: FastReID SBS-S50 on MOT17, MOT20, and DanceTrack (`384×128`, 2048-d), plus OSNet-AIN x1.0 for MOT half-val (`256×128`, 512-d, MSMT17 + Duke + CUHK03).
+
+OSNet-AIN is the only one that transfers. MOT SBS stays weak on person-ID benches; DanceTrack is near chance on MSMT.
+
+![Rank-1](docs/benchmark/figures/rank1_tracking.png)
+
+| Model | Market R1 | Market mAP | MARS R1 | MARS mAP | MSMT V1 R1 | MSMT V1 mAP |
+|---|---:|---:|---:|---:|---:|---:|
+| OSNet-AIN x1.0 (MS+D+C) | **73.13** | **45.82** | **64.95** | **49.50** | **76.19** | **48.76** |
+| SBS-S50 (MOT20) | 47.89 | 17.80 | 36.25 | 17.99 | 13.69 | 2.99 |
+| SBS-S50 (MOT17) | 29.48 | 10.27 | 28.64 | 15.39 | 9.00 | 2.19 |
+| SBS-S50 (DanceTrack) | 10.30 | 3.11 | 20.16 | 10.52 | 2.41 | 0.52 |
+
+More graphs: [docs/benchmark/tables.md](./docs/benchmark/tables.md)
+
+---
+
 ## Same recipe, three train sets
 
 SBS / AGW / BoT R50. Market train stays high on Market and MARS. MSMT or Duke train → Market falls to ~44–62. Duke→MARS beats MSMT→MARS.
@@ -145,10 +165,11 @@ Transfer + compute: [docs/benchmark/tables.md](./docs/benchmark/tables.md)
 conda activate crowd-gpu
 python scripts/eval_encoder.py --model sbs_s50 --dataset market1501 --device cuda
 python scripts/run_comparison.py --skip-existing --device cuda --batch-size 16
+python scripts/run_comparison.py --tracking --skip-existing --device cuda --batch-size 16
 python scripts/plot_comparison.py
 ```
 
-`--dataset` is `market1501`, `mars`, or `msmt17`. Keys: Market `sbs_r50` / `mgn_r50_ibn` / `siglip_base`; MSMT `msmt_sbs_r50`; Duke `duke_sbs_r50` / `duke_mgn_r50_ibn`.
+`--dataset` is `market1501`, `mars`, or `msmt17`. Keys: Market `sbs_r50` / `mgn_r50_ibn` / `siglip_base`; MSMT `msmt_sbs_r50`; Duke `duke_sbs_r50` / `duke_mgn_r50_ibn`; tracking `mot17_sbs_s50` / `mot20_sbs_s50` / `dance_sbs_s50` / `osnet_ain_msdc`.
 
 ```bash
 python scripts/import_v2_results.py      # MSMT-trained JSON from teammate branch

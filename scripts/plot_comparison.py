@@ -82,6 +82,7 @@ def _short_label(spec) -> str:
 
 
 MARKET_TRAIN_SETS = {"Market1501", "LAION-2B", "WebLI"}
+TRACKING_TRAIN_SETS = {"MOT17", "MOT20", "DanceTrack", "MSMT+Duke+CUHK03"}
 
 
 def _cohort(rows: list[dict], specs: dict, trained_on: set[str]) -> list[dict]:
@@ -397,6 +398,7 @@ def write_markdown(rows: list[dict], output: Path) -> None:
     in_domain = _cohort(rows, specs, MARKET_TRAIN_SETS)
     msmt_cross = _cohort(rows, specs, {"MSMT17"})
     duke_cross = _cohort(rows, specs, {"DukeMTMC"})
+    tracking = _cohort(rows, specs, TRACKING_TRAIN_SETS)
 
     def summary_table(subset: list[dict]) -> list[str]:
         keys = _model_keys(subset, specs)
@@ -420,7 +422,7 @@ def write_markdown(rows: list[dict], output: Path) -> None:
 
     compute_rows: list[tuple[float, str]] = []
     seen: set[str] = set()
-    for row in in_domain:
+    for row in in_domain + tracking:
         if not _ours_gpu_protocol(row):
             continue
         if row.get("dataset") != "market1501":
@@ -453,6 +455,7 @@ def write_markdown(rows: list[dict], output: Path) -> None:
         "- [Market-trained](#market-trained)",
         "- [MSMT-trained](#msmt-trained)",
         "- [Duke-trained](#duke-trained)",
+        "- [MOT / Dance / OSNet-AIN](#mot--dance--osnet-ain)",
         "- [Same recipe, three train sets](#same-recipe-three-train-sets)",
         "- [Compute](#compute)",
         "",
@@ -479,6 +482,18 @@ def write_markdown(rows: list[dict], output: Path) -> None:
         "![mAP](figures/map_duke.png)",
         "",
         *summary_table(duke_cross),
+        "",
+        "## MOT / Dance / OSNet-AIN",
+        "",
+        "Appearance checkpoints used by Deep OC-SORT, scored with the same frozen "
+        "ReID protocol (not MOT tracking). MOT17 / MOT20 / DanceTrack are FastReID "
+        "SBS-S50; MOT half-val is OSNet-AIN x1.0 (MSMT17 + Duke + CUHK03).",
+        "",
+        "![Rank-1](figures/rank1_tracking.png)",
+        "",
+        "![mAP](figures/map_tracking.png)",
+        "",
+        *summary_table(tracking),
         "",
         "## Same recipe, three train sets",
         "",
@@ -523,6 +538,7 @@ def main() -> None:
     gpu_rows = [row for row in in_domain if _ours_gpu_protocol(row)]
     msmt_cross = _cohort(rows, specs, {"MSMT17"})
     duke_cross = _cohort(rows, specs, {"DukeMTMC"})
+    tracking = _cohort(rows, specs, TRACKING_TRAIN_SETS)
 
     grouped_bars(
         gpu_rows,
@@ -581,6 +597,17 @@ def main() -> None:
             ylim=(0, 105),
             rotate=28,
             figsize=(15.0, 6.2),
+        )
+        grouped_bars(
+            tracking,
+            ["market1501", "mars", "msmt17"],
+            lambda row, metric=metric: _val(row, "metrics", metric),
+            f"{metric} — MOT / Dance SBS-S50 + OSNet-AIN (same ReID protocol)",
+            ylabel,
+            figures_dir / f"{stem}_tracking.png",
+            ylim=(0, 105),
+            rotate=18,
+            figsize=(11.0, 5.8),
         )
 
     transfer_bars(rows, figures_dir / "transfer_rank1.png")

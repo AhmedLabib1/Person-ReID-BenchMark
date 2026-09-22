@@ -10,7 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from reid.models.registry import all_specs, default_sweep_keys
+from reid.models.registry import all_specs, default_sweep_keys, tracking_sweep_keys
 
 
 def parse_args() -> argparse.Namespace:
@@ -20,8 +20,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--models",
         nargs="+",
-        default=default_sweep_keys(),
+        default=None,
         help="Registry keys. Default is the measured in-domain sweep, not the full zoo.",
+    )
+    parser.add_argument(
+        "--tracking",
+        action="store_true",
+        help="Evaluate Deep OC-SORT appearance models (MOT/Dance SBS-S50 + OSNet-AIN).",
     )
     parser.add_argument(
         "--datasets",
@@ -48,12 +53,24 @@ def download_weights(keys: list[str]) -> None:
             print(f"Have {spec.weights_path.name}")
             continue
         print(f"Downloading {spec.weights_url}")
-        urllib.request.urlretrieve(spec.weights_url, spec.weights_path)
+        if "drive.google.com" in spec.weights_url:
+            import gdown
+
+            gdown.download(
+                spec.weights_url,
+                str(spec.weights_path),
+                quiet=False,
+                fuzzy=True,
+            )
+        else:
+            urllib.request.urlretrieve(spec.weights_url, spec.weights_path)
         print(f"Wrote {spec.weights_path} ({spec.weights_path.stat().st_size} bytes)")
 
 
 def main() -> None:
     args = parse_args()
+    if args.models is None:
+        args.models = tracking_sweep_keys() if args.tracking else default_sweep_keys()
     python = sys.executable
     results = PROJECT_ROOT / "results" / "comparison"
     results.mkdir(parents=True, exist_ok=True)
