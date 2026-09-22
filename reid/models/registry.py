@@ -157,8 +157,8 @@ def all_specs() -> dict[str, ModelSpec]:
                 config_file=msmt / yaml_name,
                 weight_name=f"msmt_{weight_stem}.pth",
                 notes=(
-                    f"{notes}. Trained on MSMT17; eval on Market1501/MARS "
-                    "(cross-domain) and MSMT17 (in-domain)."
+                    f"{notes}. Trained on MSMT17 V2; in-domain MSMT17 V2 plus "
+                    "Market1501/MARS transfer."
                 ),
                 result_status="imported",
             )

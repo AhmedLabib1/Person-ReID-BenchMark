@@ -351,15 +351,10 @@ DATASETS = [
     ("mars", "MARS"),
     ("msmt17", "MSMT17"),
 ]
-CMC_METRICS = ("Rank-1", "Rank-5", "Rank-10", "Rank-20")
 ACCURACY_METRICS = ("Rank-1", "mAP", "mINP")
 PLOT_METRICS = (
     ("Rank-1", "Rank-1 (%)", "rank1"),
-    ("Rank-5", "Rank-5 (%)", "rank5"),
-    ("Rank-10", "Rank-10 (%)", "rank10"),
-    ("Rank-20", "Rank-20 (%)", "rank20"),
     ("mAP", "mAP (%)", "map"),
-    ("mINP", "mINP (%)", "minp"),
 )
 
 
@@ -403,12 +398,10 @@ def write_markdown(rows: list[dict], output: Path) -> None:
     msmt_cross = _cohort(rows, specs, {"MSMT17"})
     duke_cross = _cohort(rows, specs, {"DukeMTMC"})
 
-    def summary_table(title: str, subset: list[dict]) -> list[str]:
+    def summary_table(subset: list[dict]) -> list[str]:
         keys = _model_keys(subset, specs)
         lines = [
-            f"### {title}",
-            "",
-            "| Model | Trained on | Market Rank-1 | Market mAP | Market mINP | MARS Rank-1 | MARS mAP | MARS mINP | MSMT Rank-1 | MSMT mAP | MSMT mINP |",
+            "| Model | Train | Market R1 | Market mAP | Market mINP | MARS R1 | MARS mAP | MARS mINP | MSMT R1 | MSMT mAP | MSMT mINP |",
             "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ]
         for key in keys:
@@ -419,68 +412,11 @@ def write_markdown(rows: list[dict], output: Path) -> None:
                 for metric in ACCURACY_METRICS
             ]
             lines.append(
-                f"| {spec.label} | {spec.trained_on} | " + " | ".join(cells) + " |"
+                f"| {_short_label(spec)} | {spec.trained_on} | "
+                + " | ".join(cells)
+                + " |"
             )
         return lines
-
-    def dataset_table(title: str, subset: list[dict], dataset: str) -> list[str]:
-        keys = _model_keys(subset, specs)
-        if not keys:
-            return []
-        if all(
-            _metric_cell(subset, key, dataset, "Rank-1") == "—" for key in keys
-        ):
-            return []
-        lines = [
-            f"### {title}",
-            "",
-            "| Model | Rank-1 | Rank-5 | Rank-10 | Rank-20 | mAP | mINP |",
-            "|---|---:|---:|---:|---:|---:|---:|",
-        ]
-        for key in keys:
-            spec = specs[key]
-            cells = [
-                _metric_cell(subset, key, dataset, metric)
-                for metric in (*CMC_METRICS, "mAP", "mINP")
-            ]
-            lines.append(f"| {spec.label} | " + " | ".join(cells) + " |")
-        return lines
-
-    lines = summary_table(
-        "In-domain / same-campus (Market1501 weights + foundation)",
-        in_domain,
-    )
-    lines += [""]
-    lines += summary_table(
-        "Cross-domain (MSMT17 weights, no fine-tune)",
-        msmt_cross,
-    )
-    lines += [""]
-    lines += summary_table(
-        "Cross-domain (DukeMTMC weights, no fine-tune)",
-        duke_cross,
-    )
-    for dataset, label in DATASETS:
-        for block in (
-            dataset_table(
-                f"{label} CMC + mAP (Market1501-trained + foundation)",
-                in_domain,
-                dataset,
-            ),
-            dataset_table(
-                f"{label} CMC + mAP (MSMT17-trained)",
-                msmt_cross,
-                dataset,
-            ),
-            dataset_table(
-                f"{label} CMC + mAP (DukeMTMC-trained)",
-                duke_cross,
-                dataset,
-            ),
-        ):
-            if block:
-                lines += [""]
-                lines += block
 
     compute_rows: list[tuple[float, str]] = []
     seen: set[str] = set()
@@ -496,7 +432,7 @@ def write_markdown(rows: list[dict], output: Path) -> None:
         spec = specs[key]
         img_s = _val(row, "efficiency", "inference", "images_per_s", "gpu_steady")
         line = (
-            f"| {spec.label} | "
+            f"| {_short_label(spec)} | "
             f"{_val(row, 'efficiency', 'model', 'parameters') / 1e6:.1f} | "
             f"{_val(row, 'efficiency', 'model', 'total_mb'):.1f} | "
             f"{_val(row, 'efficiency', 'gpu_memory', 'after_load', 'allocated_mb'):.1f} | "
@@ -507,23 +443,65 @@ def write_markdown(rows: list[dict], output: Path) -> None:
         compute_rows.append((img_s, line))
     compute_rows.sort(key=lambda item: item[0], reverse=True)
 
-    lines += [
+    lines = [
+        "# Benchmark tables and graphs",
         "",
-        "### Compute (CUDA-event protocol, Market1501 extract)",
+        "Frozen encoders, cosine on L2 features, same-pid + same-camera junk.",
+        "Market-trained MSMT is **V1**. MSMT-trained and Duke-trained MSMT is **V2**.",
+        "Duke images are not evaluated (dataset withdrawn).",
+        "",
+        "- [Market-trained](#market-trained)",
+        "- [MSMT-trained](#msmt-trained)",
+        "- [Duke-trained](#duke-trained)",
+        "- [Same recipe, three train sets](#same-recipe-three-train-sets)",
+        "- [Compute](#compute)",
+        "",
+        "## Market-trained",
+        "",
+        "![Rank-1](figures/rank1.png)",
+        "",
+        "![mAP](figures/map.png)",
+        "",
+        *summary_table(in_domain),
+        "",
+        "## MSMT-trained",
+        "",
+        "![Rank-1](figures/rank1_msmt.png)",
+        "",
+        "![mAP](figures/map_msmt.png)",
+        "",
+        *summary_table(msmt_cross),
+        "",
+        "## Duke-trained",
+        "",
+        "![Rank-1](figures/rank1_duke.png)",
+        "",
+        "![mAP](figures/map_duke.png)",
+        "",
+        *summary_table(duke_cross),
+        "",
+        "## Same recipe, three train sets",
+        "",
+        "SBS / AGW / BoT R50 trained on Market vs MSMT vs Duke.",
+        "",
+        "![Train-set comparison](figures/transfer_rank1.png)",
+        "",
+        "## Compute",
+        "",
+        "Our CUDA-event protocol on Market1501 extract (RTX 5070 Laptop).",
+        "Imported Duke/MSMT efficiency is Tesla T4 and is not in this table.",
+        "",
+        "![Peak VRAM](figures/peak_vram.png)",
+        "",
+        "![Latency](figures/latency.png)",
+        "",
+        "![Accuracy vs latency](figures/pareto.png)",
         "",
         "| Model | Params (M) | Weights (MiB) | Allocated (MiB) | Peak (MiB) | GPU ms/img | GPU img/s |",
         "|---|---:|---:|---:|---:|---:|---:|",
     ]
     lines.extend(line for _speed, line in compute_rows)
-    lines += [
-        "",
-        "Not in this bench (on purpose): vehicle ReID, FastReID ViT",
-        "(no zoo `.pth`), newer non-FastReID models (SOLIDER, CLIP-ReID,",
-        "CLIMB-ReID). DukeMTMC images are not evaluated in-domain",
-        "(dataset withdrawn); Duke-trained zoo weights are imported as",
-        "cross-domain transfer only.",
-        "",
-    ]
+    lines += [""]
     output.write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -533,7 +511,8 @@ def main() -> None:
     if not rows:
         raise FileNotFoundError("No comparison JSON files found")
 
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    figures_dir = args.output_dir / "figures"
+    figures_dir.mkdir(parents=True, exist_ok=True)
     try:
         plt.style.use("seaborn-v0_8-whitegrid")
     except OSError:
@@ -553,7 +532,7 @@ def main() -> None:
         ),
         "Peak GPU memory (our extract protocol)",
         "Peak allocated (MiB)",
-        args.output_dir / "peak_vram.png",
+        figures_dir / "peak_vram.png",
         rotate=24,
         figsize=(16.0, 6.2),
     )
@@ -563,11 +542,11 @@ def main() -> None:
         lambda row: _val(row, "efficiency", "inference", "ms_per_image", "gpu_steady"),
         "Steady GPU latency (our CUDA-event protocol)",
         "ms / image",
-        args.output_dir / "latency.png",
+        figures_dir / "latency.png",
         rotate=24,
         figsize=(16.0, 6.2),
     )
-    pareto(gpu_rows, args.output_dir / "pareto.png")
+    pareto(gpu_rows, figures_dir / "pareto.png")
 
     for metric, ylabel, stem in PLOT_METRICS:
         grouped_bars(
@@ -576,7 +555,7 @@ def main() -> None:
             lambda row, metric=metric: _val(row, "metrics", metric),
             f"{metric} — Market1501 weights + foundation encoders",
             ylabel,
-            args.output_dir / f"{stem}.png",
+            figures_dir / f"{stem}.png",
             ylim=(0, 105),
             rotate=24,
             figsize=(16.0, 6.2),
@@ -585,9 +564,9 @@ def main() -> None:
             msmt_cross,
             ["market1501", "mars", "msmt17"],
             lambda row, metric=metric: _val(row, "metrics", metric),
-            f"{metric} — MSMT17 weights (Market/MARS transfer; MSMT in-domain not run)",
+            f"{metric} — MSMT17 weights (in-domain MSMT V2 + Market/MARS transfer)",
             ylabel,
-            args.output_dir / f"{stem}_msmt.png",
+            figures_dir / f"{stem}_msmt.png",
             ylim=(0, 105),
             rotate=28,
             figsize=(15.0, 6.2),
@@ -598,34 +577,19 @@ def main() -> None:
             lambda row, metric=metric: _val(row, "metrics", metric),
             f"{metric} — DukeMTMC weights (Market / MARS / MSMT17 V2 transfer)",
             ylabel,
-            args.output_dir / f"{stem}_duke.png",
+            figures_dir / f"{stem}_duke.png",
             ylim=(0, 105),
             rotate=28,
             figsize=(15.0, 6.2),
         )
 
-    transfer_bars(rows, args.output_dir / "transfer_rank1.png")
-    for dataset, stem, title in (
-        ("market1501", "cmc_msmt_market1501.png", "CMC on Market1501 (MSMT17-trained FastReID)"),
-        ("mars", "cmc_msmt_mars.png", "CMC on MARS (MSMT17-trained FastReID)"),
-        ("market1501", "cmc_duke_market1501.png", "CMC on Market1501 (DukeMTMC-trained FastReID)"),
-        ("mars", "cmc_duke_mars.png", "CMC on MARS (DukeMTMC-trained FastReID)"),
-        ("msmt17", "cmc_duke_msmt17.png", "CMC on MSMT17 V2 (DukeMTMC-trained FastReID)"),
-    ):
-        prefix = "duke_" if "duke" in stem else "msmt_"
-        plot_cmc(
-            args.output_dir / "cmc",
-            dataset,
-            args.output_dir / stem,
-            title,
-            prefix,
-        )
+    transfer_bars(rows, figures_dir / "transfer_rank1.png")
     snapshot_results(
         PROJECT_ROOT / "results" / "comparison",
         args.output_dir / "results",
     )
     write_markdown(rows, args.output_dir / "tables.md")
-    print(f"Wrote plots to {args.output_dir}")
+    print(f"Wrote plots to {figures_dir}")
 
 
 if __name__ == "__main__":

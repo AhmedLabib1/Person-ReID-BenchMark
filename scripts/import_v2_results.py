@@ -55,6 +55,13 @@ def pct(value: float) -> float:
     return float(value) * 100.0
 
 
+def rank_from_cmc(payload: dict, rank: int) -> float | None:
+    cmc = payload.get("cmc")
+    if not isinstance(cmc, list) or len(cmc) < rank:
+        return None
+    return pct(float(cmc[rank - 1]))
+
+
 def convert_metrics(payload: dict, model_key: str, dataset: str, efficiency_row: dict) -> dict:
     spec = all_specs()[model_key]
     parameters = int(float(efficiency_row["parameters"]))
@@ -78,6 +85,7 @@ def convert_metrics(payload: dict, model_key: str, dataset: str, efficiency_row:
         "device": payload.get("evaluation_device", "cuda"),
         "query_tracklets": int(payload["query_samples"]),
         "gallery_tracklets": int(payload["gallery_samples"]),
+        "dataset_name": payload.get("dataset_name"),
         "metrics": {
             "Rank-1": pct(payload["rank_1"]),
             "Rank-5": pct(payload["rank_5"]),
@@ -131,6 +139,7 @@ def import_msmt(efficiency: dict[str, dict[str, str]]) -> None:
         for dataset, protocol in (
             ("market1501", "single_image_l2"),
             ("mars", "uniform8_mean_raw_l2"),
+            ("msmt17", "single_image_l2"),
         ):
             rel = (
                 f"benchmarks/results/{model_id}/{dataset}/{protocol}/metrics.json"
@@ -139,6 +148,9 @@ def import_msmt(efficiency: dict[str, dict[str, str]]) -> None:
             converted = convert_metrics(
                 payload, our_key, dataset, efficiency[model_id]
             )
+            rank20 = rank_from_cmc(payload, 20)
+            if rank20 is not None:
+                converted["metrics"]["Rank-20"] = rank20
             out = OUT_DIR / f"{our_key}_{dataset}.json"
             out.write_text(json.dumps(converted, indent=2), encoding="utf-8")
             print(f"Wrote {out.name}")
